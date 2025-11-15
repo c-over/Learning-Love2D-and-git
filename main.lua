@@ -1,40 +1,61 @@
 -- main.lua
 local Settings = require("settings")
 local Player = require("player")
+local Layout = require("layout")
 
 local font = love.graphics.newFont("simhei.ttf", 28)
 love.graphics.setFont(font)
 
 local currentScene = "menu"
-local menuItems = {"开始游戏", "设置", "退出游戏"}
-local selectedIndex = 1
+local selectedIndex = nil
 local bgMusic
+
+-- 菜单按钮表
+local buttons = {
+    {x = 250, y = 200, w = 200, h = 40, text = "开始游戏", onClick = function()
+        currentScene = "player"
+        Player.load()
+    end},
+    {x = 250, y = 260, w = 200, h = 40, text = "设置", onClick = function()
+        currentScene = "settings"
+    end},
+    {x = 250, y = 320, w = 200, h = 40, text = "退出游戏", onClick = function()
+        love.event.quit()
+    end}
+}
 
 function love.load()
     bgMusic = love.audio.newSource("title.mp3", "stream")
     bgMusic:setLooping(true)
     bgMusic:play()
-    Settings.init(bgMusic) -- 初始化设置界面并应用音量
+    Settings.init(bgMusic)
+
+    love.window.setMode(Layout.virtualWidth, Layout.virtualHeight, {resizable = true})
+    Layout.resize(love.graphics.getWidth(), love.graphics.getHeight())
+end
+
+function love.resize(w, h)
+    Layout.resize(w, h)
 end
 
 -- 键盘操作
 function love.keypressed(key)
     if currentScene == "menu" then
         if key == "up" then
-            selectedIndex = selectedIndex - 1
-            if selectedIndex < 1 then selectedIndex = #menuItems end
+            if selectedIndex == nil then selectedIndex = 1
+            else
+                selectedIndex = selectedIndex - 1
+                if selectedIndex < 1 then selectedIndex = #buttons end
+            end
         elseif key == "down" then
-            selectedIndex = selectedIndex + 1
-            if selectedIndex > #menuItems then selectedIndex = 1 end
+            if selectedIndex == nil then selectedIndex = 1
+            else
+                selectedIndex = selectedIndex + 1
+                if selectedIndex > #buttons then selectedIndex = 1 end
+            end
         elseif key == "return" then
-            local choice = menuItems[selectedIndex]
-            if choice == "开始游戏" then
-                currentScene = "player"
-                Player.load()
-            elseif choice == "设置" then
-                currentScene = "settings"
-            elseif choice == "退出游戏" then
-                love.event.quit()
+            if selectedIndex and buttons[selectedIndex].onClick then
+                buttons[selectedIndex].onClick()
             end
         end
     elseif currentScene == "settings" then
@@ -44,18 +65,7 @@ end
 
 function love.draw()
     if currentScene == "menu" then
-        love.graphics.print("中文菜单 Demo", 200, 50)
-        for i, item in ipairs(menuItems) do
-            local bx, by, w, h = 250, 150 + i * 50, 200, 40
-            if i == selectedIndex then
-                love.graphics.setColor(0.2, 0.8, 1) -- 悬停高亮颜色（蓝色）
-            else
-                love.graphics.setColor(1, 1, 1) -- 默认白色
-            end
-            love.graphics.rectangle("line", bx, by, w, h)
-            love.graphics.printf(item, bx, by + 10, w, "center")
-        end
-        love.graphics.setColor(1, 1, 1)
+        Layout.draw("中文菜单 Demo", {}, buttons, selectedIndex)
     elseif currentScene == "settings" then
         Settings.draw()
     elseif currentScene == "player" then
@@ -63,24 +73,11 @@ function love.draw()
     end
 end
 
-
--- 鼠标点击支持
 function love.mousepressed(x, y, button)
-    if currentScene == "menu" and button == 1 then
-        for i, item in ipairs(menuItems) do
-            local bx, by, w, h = 250, 150 + i * 50, 200, 40
-            if x >= bx and x <= bx + w and y >= by and y <= by + h then
-                selectedIndex = i
-                local choice = menuItems[selectedIndex]
-                if choice == "开始游戏" then
-                    currentScene = "player"
-                    Player.load()
-                elseif choice == "设置" then
-                    currentScene = "settings"
-                elseif choice == "退出游戏" then
-                    love.event.quit()
-                end
-            end
+    if currentScene == "menu" then
+        local result = Layout.mousepressed(x, y, button, buttons)
+        if type(result) == "number" then
+            selectedIndex = result
         end
     elseif currentScene == "settings" then
         local result = Settings.mousepressed(x, y, button)
@@ -93,17 +90,10 @@ end
 
 function love.mousemoved(x, y, dx, dy, istouch)
     if currentScene == "menu" then
-        -- 菜单悬停检测
-        for i, item in ipairs(menuItems) do
-            local bx, by, w, h = 250, 150 + i * 50, 200, 40
-            if x >= bx and x <= bx + w and y >= by and y <= by + h then
-                selectedIndex = i
-            end
-        end
+        selectedIndex = Layout.mousemoved(x, y, buttons)
     elseif currentScene == "player" then
         Player.mousemoved(x, y)
     elseif currentScene == "settings" then
         Settings.mousemoved(x, y)
     end
 end
-

@@ -1,125 +1,65 @@
--- settings.lua
-local Settings = {}
+--settings.lua
+local Layout = require("layout")
 local Config = require("config")
+local Settings = {}
 
-local options = {"音量", "语言", "返回菜单"}
-local selected = 1
+local buttons = {}
+local selectedIndex = nil
+local bgMusic
 local volume = 100
 local language = "中文"
-local bgMusicRef
-local selectedIndex = nil -- 用来记录悬停的按钮
 
 function Settings.init(music)
+    bgMusic = music
     Config.load()
     local data = Config.get()
     volume = data.settings.volume or 100
     language = data.settings.language or "中文"
 
-    if music then
-        bgMusicRef = music
-        bgMusicRef:setVolume(volume / 100)
-    end
-
-    -- 定义按钮
     buttons = {
-        {
-            x = 240, y = 160, w = 200, h = 40,
-            getText = function() return "音量：" .. volume .. "%" end,
-            onClick = function()
-                volume = math.min(100, volume + 10)
-                Config.setVolume(volume)
-                if bgMusicRef then
-                    bgMusicRef:setVolume(volume / 100)
-                end
+        {text = "音量 +", x = 250, y = 250, w = 200, h = 40,
+         onClick = function()
+            volume = math.min(100, volume + 10)
+            bgMusic:setVolume(volume / 100)
+            Config.setVolume(volume)
+         end},
+        {text = "音量 -", x = 250, y = 310, w = 200, h = 40,
+         onClick = function()
+            volume = math.max(0, volume - 10)
+            bgMusic:setVolume(volume / 100)
+            Config.setVolume(volume)
+         end},
+        {text = "切换语言", x = 250, y = 370, w = 200, h = 40,
+         onClick = function()
+            if language == "中文" then
+                language = "English"
+            else
+                language = "中文"
             end
-        },
-        {
-            x = 240, y = 210, w = 200, h = 40,
-            getText = function() return "语言：" .. language end,
-            onClick = function()
-                language = (language == "中文") and "English" or "中文"
-                Config.setLanguage(language)
-            end
-        },
-        {
-            x = 240, y = 260, w = 200, h = 40,
-            getText = function() return "返回菜单" end,
-            onClick = function()
-                return "menu"
-            end
-        }
+            Config.setLanguage(language)
+         end},
+        {text = "返回菜单", x = 250, y = 430, w = 200, h = 40,
+         onClick = function()
+            return "menu"
+         end}
     }
 end
 
--- 键盘操作
-function Settings.keypressed(key)
-    if key == "up" then
-        selected = selected - 1
-        if selected < 1 then selected = #options end
-    elseif key == "down" then
-        selected = selected + 1
-        if selected > #options then selected = 1 end
-    end
-
-    if options[selected] == "音量" then
-        if key == "left" then
-            volume = math.max(0, volume - 10)
-        elseif key == "right" then
-            volume = math.min(100, volume + 10)
-        end
-        Config.setVolume(volume)
-        if bgMusicRef then
-            bgMusicRef:setVolume(volume / 100)
-        end
-    elseif options[selected] == "语言" and (key == "left" or key == "right") then
-        language = (language == "中文") and "English" or "中文"
-        Config.setLanguage(language)
-    elseif key == "return" and options[selected] == "返回菜单" then
-        return "menu"
-    end
-    return "settings"
-end
-
--- 鼠标点击
-function Settings.mousepressed(x, y, button)
-    if button ~= 1 then return "settings" end
-    for _, btn in ipairs(buttons) do
-        if x >= btn.x and x <= btn.x + btn.w and
-           y >= btn.y and y <= btn.y + btn.h then
-            local result = btn.onClick()
-            if result == "menu" then
-                return "menu"
-            end
-        end
-    end
-    return "settings"
-end
-
--- 绘制
 function Settings.draw()
-    love.graphics.print("设置界面", 220, 100)
-
-    for i, btn in ipairs(buttons) do
-        local text = btn.getText()
-        if selectedIndex == i then
-            love.graphics.setColor(0.2, 0.8, 1)
-        else
-            love.graphics.setColor(1, 1, 1)
-        end
-        love.graphics.rectangle("line", btn.x, btn.y, btn.w, btn.h)
-        love.graphics.printf(text, btn.x, btn.y + 10, btn.w, "center")
-    end
-
-    love.graphics.setColor(1, 1, 1)
+    local infoLines = {
+        "音量：" .. volume .. "%",
+        "语言：" .. language
+    }
+    Layout.draw("设置界面", infoLines, buttons, selectedIndex)
 end
--- 鼠标移动检测
+
 function Settings.mousemoved(x, y)
-    selectedIndex = nil
-    for i, btn in ipairs(buttons) do
-        if x >= btn.x and x <= btn.x + btn.w and
-           y >= btn.y and y <= btn.y + btn.h then
-            selectedIndex = i
-        end
-    end
+    selectedIndex = Layout.mousemoved(x, y, buttons)
+    return selectedIndex
 end
+
+function Settings.mousepressed(x, y, button)
+    return Layout.mousepressed(x, y, button, buttons)
+end
+
 return Settings
