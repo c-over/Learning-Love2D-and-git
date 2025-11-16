@@ -1,9 +1,11 @@
 -- main.lua
 local Settings = require("settings")
 local Player = require("player")
+local InventoryUI = require("inventory_ui")
+local Inventory = require("inventory")
 local Layout = require("layout")
 
-local font = love.graphics.newFont("simhei.ttf", 28)
+local font = love.graphics.newFont("assets/simhei.ttf", 28)
 love.graphics.setFont(font)
 
 local currentScene = "menu"
@@ -19,19 +21,23 @@ local buttons = {
     {x = 250, y = 260, w = 200, h = 40, text = "设置", onClick = function()
         currentScene = "settings"
     end},
-    {x = 250, y = 320, w = 200, h = 40, text = "退出游戏", onClick = function()
+    {x = 250, y = 320, w = 200, h = 40, text = "背包", onClick = function()
+        currentScene = "inventory"
+    end},
+    {x = 250, y = 380, w = 200, h = 40, text = "退出游戏", onClick = function()
         love.event.quit()
     end}
 }
 
 function love.load()
-    bgMusic = love.audio.newSource("title.mp3", "stream")
+    bgMusic = love.audio.newSource("assets/title.mp3", "stream")
     bgMusic:setLooping(true)
     bgMusic:play()
     Settings.init(bgMusic)
 
     love.window.setMode(Layout.virtualWidth, Layout.virtualHeight, {resizable = true})
-    Layout.resize(love.graphics.getWidth(), love.graphics.getHeight())
+    Layout.resize(love.graphics.getWidth(), love.graphics.getHeight()) 
+    Inventory.load()
 end
 
 function love.resize(w, h)
@@ -70,6 +76,8 @@ function love.draw()
         Settings.draw()
     elseif currentScene == "player" then
         Player.draw()
+    elseif currentScene == "inventory" then
+        InventoryUI.draw()
     end
 end
 
@@ -85,6 +93,9 @@ function love.mousepressed(x, y, button)
     elseif currentScene == "player" then
         local result = Player.mousepressed(x, y, button)
         if result == "menu" then currentScene = "menu" end
+    elseif currentScene == "inventory" then
+        local result = InventoryUI.mousepressed(x, y, button)
+        if result == "menu" then currentScene = "menu" end
     end
 end
 
@@ -95,5 +106,7 @@ function love.mousemoved(x, y, dx, dy, istouch)
         Player.mousemoved(x, y)
     elseif currentScene == "settings" then
         Settings.mousemoved(x, y)
+    elseif currentScene == "inventory" then
+        InventoryUI.mousemoved(x, y)
     end
 end

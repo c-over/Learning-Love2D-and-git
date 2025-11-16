@@ -13,9 +13,21 @@ local data = {
         hp = 100
     },
     inventory = {
-        {name = "Potion", count = 2},
-        {name = "Sword", count = 1}
+    {
+        id = 1,
+        name = "经验药水",
+        icon = "assets/potion.png",
+        count = 3,
+        description = "使用后提升1级"
+    },
+    {
+        id = 2,
+        name = "大经验药水",
+        icon = "assets/big_potion.png",
+        count = 1,
+        description = "使用后提升3级"
     }
+}
 }
 
 -- 保存到文件
