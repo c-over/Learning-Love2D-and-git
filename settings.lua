@@ -38,9 +38,9 @@ function Settings.init(music)
             end
             Config.setLanguage(language)
          end},
-        {text = "返回菜单", x = 250, y = 430, w = 200, h = 40,
+        {text = "返回标题", x = 250, y = 430, w = 200, h = 40,
          onClick = function()
-            return "menu"
+            return "title"
          end}
     }
 end

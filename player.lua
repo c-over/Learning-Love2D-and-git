@@ -15,6 +15,12 @@ function Player.addLevel(amount)
     Config.updatePlayer({name = Player.data.name, level = Player.data.level, hp = Player.data.hp})
 end
 
+function Player.addHP(amount)
+    if not Player.data.hp then Player.data.hp = 100 end
+    Player.data.hp = math.min(Player.data.hp + 100 * (amount or 1),Player.data.level * 100)
+    Config.updatePlayer({name = Player.data.name, level = Player.data.level, hp = Player.data.hp})
+end
+
 function Player.load()
     -- 从存档读取数据
     Config.load()
@@ -50,7 +56,7 @@ function Player.load()
             onClick = function()
                 -- 保存数据
                 Config.updatePlayer({name = Player.data.name, level = Player.data.level, hp = Player.data.hp})
-                return "menu"
+                return "title"
             end
         }
     }
@@ -65,10 +71,16 @@ function Player.draw()
     Layout.draw("玩家信息", infoLines, buttons, selectedIndex)
 end
 
+function Player.keypressed(key)
+    if key == "escape" then
+        currentScene = "title"
+    end
+end
+
 function Player.mousepressed(x, y, button)
     local result = Layout.mousepressed(x, y, button, buttons)
-    if result == "menu" then
-        return "menu"
+    if result == "title" then
+        return "title"
     end
     return "game"
 end

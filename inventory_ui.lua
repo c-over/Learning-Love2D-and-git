@@ -8,7 +8,7 @@ local buttons = {
         x = 200, y = 500, w = 200, h = 50,
         text = "返回主菜单",
         onClick = function()
-            return "menu"
+            return "title"
         end
     }
 }
@@ -109,6 +109,11 @@ function InventoryUI.draw()
     love.graphics.setColor(1, 1, 1)
 end
 
+function InventoryUI.keypressed(key)
+    if key == "escape" then
+        currentScene = "title"
+    end
+end
 
 function InventoryUI.mousepressed(x, y, button)
     local vx, vy = Layout.toVirtual(x, y)
@@ -164,8 +169,8 @@ function InventoryUI.mousepressed(x, y, button)
 
     -- 返回按钮
     local result = Layout.mousepressed(x, y, button, buttons)
-    if result == "menu" then
-        return "menu"
+    if result == "title" then
+        return "title"
     end
     return result
 end
