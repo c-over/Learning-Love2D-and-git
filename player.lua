@@ -1,3 +1,4 @@
+--player.lua
 local Config = require("config")
 local Layout = require("layout")
 local Player = {}
@@ -30,7 +31,9 @@ function Player.load()
     Player.data.name = save.player.name or "未命名"
     Player.data.level = save.player.level or 1
     Player.data.hp    = save.player.hp or 100
-
+    -- 如果存档里有重生点，就用它；否则用默认
+    Player.data.x = save.player.respawnX or 0
+    Player.data.y = save.player.respawnY or 0
     -- 定义按钮（只定义一次，绘制和交互都用这个表）
     buttons = {
         {
@@ -52,11 +55,11 @@ function Player.load()
         },
         {
             x = 200, y = 440, w = 200, h = 50,
-            text = "返回菜单",
+            text = "返回游戏",
             onClick = function()
                 -- 保存数据
                 Config.updatePlayer({name = Player.data.name, level = Player.data.level, hp = Player.data.hp})
-                return "title"
+                currentScene = "game"
             end
         }
     }
@@ -73,16 +76,12 @@ end
 
 function Player.keypressed(key)
     if key == "escape" then
-        currentScene = "title"
+        currentScene = "game"
     end
 end
 
 function Player.mousepressed(x, y, button)
     local result = Layout.mousepressed(x, y, button, buttons)
-    if result == "title" then
-        return "title"
-    end
-    return "game"
 end
 
 function Player.mousemoved(x, y)

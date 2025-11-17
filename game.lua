@@ -2,8 +2,84 @@
 local Game = {}
 Game.keys = {}
 local counter = 0
+Game.justRespawned = false
+
+local Layout = require("Layout")
+local Player = require("player")
+local Config = require("config")
+local Battle = require("battle")
+local InventoryUI = require("inventory_ui")
+
+ -- 菜单栏按钮
+local menuHeight = 120
+local w, h = love.graphics.getWidth(), love.graphics.getHeight()
+local menuTop = h - menuHeight
+
+Game.menuButtons = {
+    {
+        x = 100, 
+        y = menuTop + (menuHeight - 40) / 2,  -- 按钮高度40，居中
+        w = 120, h = 40,
+        text = "玩家信息",
+         onClick = function() currentScene = "player" end
+    },
+    {
+        x = 250, 
+        y = menuTop + (menuHeight - 40) / 2,
+        w = 120, h = 40,
+        text = "背包",
+        onClick = function() currentScene = "inventory" end
+    },
+    {
+        x = 400, 
+        y = menuTop + (menuHeight - 40) / 2,
+        w = 120, h = 40,
+        text = "返回标题",
+        onClick = function() currentScene = "title" end
+    },
+    {
+        x = 550, 
+        y = menuTop + (menuHeight - 40) / 2,
+        w = 180, h = 40,
+        text = "设置重生点",
+        onClick = function() Config.setRespawn(Game.player.x, Game.player.y) end
+    }
+}
+
+Game.monsters = {
+    {x = 200, y = 200, w = 32, h = 32, color = {1, 0, 0}, name = "史莱姆", level = 1, hp = 200},
+    {x = 400, y = 300, w = 32, h = 32, color = {0, 1, 0}, name = "哥布林", level = 2, hp = 80},
+    {x = 600, y = 250, w = 32, h = 32, color = {0, 0, 1}, name = "蝙蝠", level = 3, hp = 60}
+    }
+
+-- 进入战斗
+local function enterBattle(i, monster)
+    if Player.data.hp > 0 then 
+        Battle.start(
+            { name = monster.name, level = monster.level, hp = monster.hp },
+            i,
+            function(outcome, enemyIndex)
+                if outcome.result == "win" then
+                    -- 删除该怪物，避免死循环
+                    table.remove(Game.monsters, enemyIndex)
+                    -- 奖励逻辑可在此实现（比如增加等级或给物品）
+                    Player.addLevel(1)
+                elseif outcome.result == "lose" then
+                    -- 失败处理（回到标题或惩罚）
+                    currentScene = "title"
+                return
+                end
+                -- 回到游戏场景
+                currentScene = "game"
+            end
+        )
+    else 
+        print("你需要治疗")
+    end
+end
 
 function Game.load()
+    Config.load()
     Game.tileSize = 32
     -- 玩家像素坐标（屏幕中心）
     -- 统一噪声参数
@@ -11,11 +87,15 @@ function Game.load()
     Game.wallThreshold = 0.40
 
     -- 玩家（世界坐标，像素）
+    local rx, ry = Config.getRespawn()
     Game.player = {
-        x = 0, y = 0,        -- 世界坐标（像素）
-        w = 30, h = 30,      -- 玩家碰撞盒（略小于 tileSize，避免边界卡死）
+        x = rx or 0,
+        y = ry or 0,
+        w = 30, h = 30,
         speed = 240
     }
+    -- 其他初始化逻辑...
+    Player.load({x = Game.player.x, y = Game.player.y})
 
     -- 保证出生在草地：从原点开始向外扩展找草地
     local gx, gy = 0, 0
@@ -38,6 +118,8 @@ function Game.load()
         end
         radius = radius + 1
     end
+    InventoryUI.load()
+
 end
 
 -- 地图判定：格子是否为墙
@@ -124,6 +206,15 @@ function Game.update(dt)
         end
         p.y = newY
     end
+
+    -- 碰到怪物时触发
+    for i, monster in ipairs(Game.monsters) do
+        if math.abs(Game.player.x - monster.x) < monster.w and
+            math.abs(Game.player.y - monster.y) < monster.h then
+            enterBattle(i, monster)
+            break
+        end
+    end
 end
 
 -- 根据噪声生成地形：0=草地, 1=墙
@@ -173,7 +264,7 @@ function Game.draw()
     love.graphics.rectangle("fill", Game.player.x - camX, Game.player.y - camY, Game.player.w, Game.player.h)
 
     if debugMode then
-        -- 绘制计数器
+        -- 调试内容：绘制计数器
         love.graphics.print("游戏运行时间: " .. string.format("%.2f", counter), 200, 200)
     
         -- 绘制调试信息（右上角）
@@ -186,11 +277,30 @@ function Game.draw()
         if love.keyboard.isDown("right") then table.insert(pressedKeys, "RIGHT") end
 
         local keysText = "Keys: " .. table.concat(pressedKeys, ", ")
-        local posText = string.format("Player: (%.1f, %.1f)", Game.player.x, Game.player.y)
+        local posText = string.format("Player: (%.d, %.d)", Game.player.x, Game.player.y)
 
         -- 在右上角绘制，保证在屏幕内
         love.graphics.print(posText, w-250, 20)
         love.graphics.print(keysText, w-250, 40)
+    end
+
+    local offsetY = h - menuHeight - Layout.virtualHeight  -- 把虚拟坐标整体下移
+
+    -- 绘制菜单栏背景（底部遮挡地图）
+    love.graphics.setColor(0.1, 0.1, 0.1, 0.9)
+    love.graphics.rectangle("fill", 0, h - menuHeight, w, menuHeight)
+
+    -- 在菜单栏区域调用 Layout.draw
+    local infoLines = {""}
+    local hoveredIndex = Layout.mousemoved(love.mouse.getX(), love.mouse.getY(), Game.menuButtons or {})
+    Layout.draw("", infoLines, Game.menuButtons, hoveredIndex,offsetY)
+
+    -- 绘制怪物
+    for _, monster in ipairs(Game.monsters) do
+        love.graphics.setColor(monster.color)
+        love.graphics.rectangle("fill", monster.x - camX, monster.y - camY, monster.w, monster.h)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.print(monster.name, monster.x - camX, monster.y - camY - 20)
     end
 end
 
@@ -199,5 +309,26 @@ function Game.keypressed(key)
         currentScene = "title"
     end
 end
+
+function Game.mousemoved(x, y)
+    if currentScene == "player" then
+        Player.mousemoved(x, y)
+    elseif currentScene == "inventory" then
+        InventoryUI.mousemoved(x, y)
+    end
+end
+
+function Game.mousepressed(x, y, button)
+    if currentScene == "player" then
+        local result = Player.mousepressed(x, y, button)
+        if result == "title" then currentScene = "title" end
+    elseif currentScene == "inventory" then
+        local result = InventoryUI.mousepressed(x, y, button)
+        if result == "title" then currentScene = "title" end
+    else
+        Layout.mousepressed(x, y, button, Game.menuButtons)
+    end
+end
+
 
 return Game

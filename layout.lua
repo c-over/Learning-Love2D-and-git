@@ -22,15 +22,16 @@ end
 
 -- 绘制统一布局（位置缩放，大小固定）
 function Layout.draw(title, infoLines, buttons, selectedIndex)
+    offsetY = offsetY or 0
     local font = love.graphics.getFont()
 
     -- 标题区
     love.graphics.setColor(1, 1, 1)
-    local tx, ty = Layout.toScreen(0, 50)
+    local tx, ty = Layout.toScreen(0, 50 + offsetY)
     love.graphics.printf(title, tx, ty, love.graphics.getWidth(), "center")
 
     -- 信息区
-    local infoY = 120
+    local infoY = 120 + offsetY
     for _, line in ipairs(infoLines) do
         local ix, iy = Layout.toScreen(200, infoY)
         love.graphics.print(line, ix, iy)
@@ -39,10 +40,10 @@ function Layout.draw(title, infoLines, buttons, selectedIndex)
 
     -- 按钮区
     for i, btn in ipairs(buttons) do
-        local bx, by = Layout.toScreen(btn.x, btn.y)
+        local bx, by = Layout.toScreen(btn.x, btn.y + offsetY)
         local w, h = btn.w, btn.h  -- 大小保持不变
         if selectedIndex == i then
-            love.graphics.setColor(0.2, 0.8, 1)
+            love.graphics.setColor(0.2, 0.8, 1) --蓝色
         else
             love.graphics.setColor(1, 1, 1)
         end

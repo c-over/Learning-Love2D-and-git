@@ -2,6 +2,7 @@ local Title = require("title")
 local Game = require("game")
 local Layout = require("layout")
 local Player = require("player")
+local Battle = require("battle")
 local Settings = require("settings")
 local Inventory = require("inventory")
 local InventoryUI = require("inventory_ui")
@@ -22,6 +23,7 @@ function love.load()
     debugMode = false  -- 初始关闭
     Inventory.load()
     Game.load()
+    Player.load()   -- 从存档读取数据
 
     currentScene = "title"
     Title.load()
@@ -32,6 +34,8 @@ function love.update(dt)
         Title.update(dt)
     elseif currentScene == "game" then
         Game.update(dt)
+    elseif currentScene == "battle" then
+        Battle.update(dt)
     end
 end
 
@@ -43,10 +47,11 @@ function love.draw()
     elseif currentScene == "settings" then
         Settings.draw()
     elseif currentScene == "player" then
-        Player.load()
         Player.draw()
     elseif currentScene == "inventory" then
         InventoryUI.draw()
+    elseif currentScene == "battle" then
+        Battle.draw()
     end
 end
 
@@ -62,12 +67,17 @@ function love.keypressed(key)
         Settings.keypressed(key)
     elseif currentScene == "inventory" then
         InventoryUI.keypressed(key)
+    elseif currentScene == "battle" then
+        Battle.keypressed(key)
     end
 end
 
 function love.mousepressed(x, y, button)
     if currentScene == "title" then
         local result = Title.mousepressed(x, y, button)
+        if result == "title" then currentScene = "title" end
+    elseif currentScene == "game" then
+        local result = Game.mousepressed(x, y, button)
         if result == "title" then currentScene = "title" end
     elseif currentScene == "settings" then
         local result = Settings.mousepressed(x, y, button)
@@ -78,14 +88,21 @@ function love.mousepressed(x, y, button)
     elseif currentScene == "inventory" then
         local result = InventoryUI.mousepressed(x, y, button)
         if result == "title" then currentScene = "title" end
+    elseif currentScene == "battle" then
+        local result = Battle.mousepressed(x, y, button)
+        if result == "title" then currentScene = "title" end
     end
 end
 
 function love.mousemoved(x, y, dx, dy, istouch)
     if currentScene == "title" then
-        selectedIndex = Title.mousemoved(x, y, buttons)
+        Title.mousemoved(x,y)
+    elseif currentScene == "game" then
+        Game.mousemoved(x,y)
     elseif currentScene == "player" then
         Player.mousemoved(x, y)
+    elseif currentScene == "battle" then
+        Battle.mousemoved(x, y)
     elseif currentScene == "settings" then
         Settings.mousemoved(x, y)
     elseif currentScene == "inventory" then

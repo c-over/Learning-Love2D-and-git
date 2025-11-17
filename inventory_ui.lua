@@ -6,9 +6,9 @@ local ItemManager = require("ItemManager")
 local buttons = {
     {
         x = 200, y = 500, w = 200, h = 50,
-        text = "返回主菜单",
+        text = "返回游戏",
         onClick = function()
-            return "title"
+            currentScene = "game"
         end
     }
 }
@@ -111,7 +111,7 @@ end
 
 function InventoryUI.keypressed(key)
     if key == "escape" then
-        currentScene = "title"
+        currentScene = "game"
     end
 end
 
@@ -152,10 +152,12 @@ function InventoryUI.mousepressed(x, y, button)
                 if def.usable then
                     table.insert(options, {text="使用", action=function() Inventory:useItem(item.id, 1) end})
                 end
-                if def.stackable then
+                if def.stackable and debugMode == true then
                     table.insert(options, {text="添加", action=function() Inventory:addItem(item.id, 1) end})
                 end
-                table.insert(options, {text="丢弃", action=function() Inventory:removeItem(item.id, 1) end})
+                if def.posable then
+                    table.insert(options, {text="丢弃", action=function() Inventory:removeItem(item.id, 1) end})
+                end
                 InventoryUI.actionMenu = {
                     x = gx + slotSize + 10,
                     y = gy,
@@ -167,11 +169,8 @@ function InventoryUI.mousepressed(x, y, button)
         end
     end
 
-    -- 返回按钮
+    -- 返回按钮    
     local result = Layout.mousepressed(x, y, button, buttons)
-    if result == "title" then
-        return "title"
-    end
     return result
 end
 

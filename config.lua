@@ -10,7 +10,9 @@ local data = {
     player = {
         name = "Hero",
         level = 1,
-        hp = 100
+        hp = 100,
+        respawnX = 0,
+        respawnY = 0
     },
     inventory = {
     {
@@ -68,6 +70,16 @@ function Config.updatePlayer(info)
         data.player[k] = v
     end
     Config.save()
+end
+--重生点接口
+function Config.setRespawn(x, y)
+    data.player.respawnX = x
+    data.player.respawnY = y
+    Config.save()
+end
+
+function Config.getRespawn()
+    return data.player.respawnX, data.player.respawnY
 end
 
 function Config.updateInventory(newInventory)
