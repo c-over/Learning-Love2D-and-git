@@ -4,11 +4,15 @@ Game.keys = {}
 local counter = 0
 Game.justRespawned = false
 
+local Core = require("core")
+local Debug = require("debug_utils")
 local Layout = require("Layout")
 local Player = require("player")
 local Config = require("config")
 local Battle = require("battle")
+local Monster = require("monster")
 local InventoryUI = require("inventory_ui")
+local PlayerAnimation = require("PlayerAnimation")
 
  -- 菜单栏按钮
 local menuHeight = 120
@@ -46,12 +50,6 @@ Game.menuButtons = {
     }
 }
 
-Game.monsters = {
-    {x = 200, y = 200, w = 32, h = 32, color = {1, 0, 0}, name = "史莱姆", level = 1, hp = 200},
-    {x = 400, y = 300, w = 32, h = 32, color = {0, 1, 0}, name = "哥布林", level = 2, hp = 80},
-    {x = 600, y = 250, w = 32, h = 32, color = {0, 0, 1}, name = "蝙蝠", level = 3, hp = 60}
-    }
-
 -- 进入战斗
 local function enterBattle(i, monster)
     if Player.data.hp > 0 then 
@@ -80,6 +78,7 @@ end
 
 function Game.load()
     Config.load()
+    Monster.load()
     Game.tileSize = 32
     -- 玩家像素坐标（屏幕中心）
     -- 统一噪声参数
@@ -88,14 +87,14 @@ function Game.load()
 
     -- 玩家（世界坐标，像素）
     local rx, ry = Config.getRespawn()
+    
     Game.player = {
-        x = rx or 0,
-        y = ry or 0,
-        w = 30, h = 30,
-        speed = 240
+    x = rx or 0,
+    y = ry or 0,
+    w = 32, h = 32, --玩家碰撞箱大小
+    speed = 240,
+    anim = PlayerAnimation.load("assets/Character/Idle.png", "assets/Character/Walk.png", 32, 32)
     }
-    -- 其他初始化逻辑...
-    Player.load({x = Game.player.x, y = Game.player.y})
 
     -- 保证出生在草地：从原点开始向外扩展找草地
     local gx, gy = 0, 0
@@ -122,98 +121,18 @@ function Game.load()
 
 end
 
--- 地图判定：格子是否为墙
-function Game.isSolidTile(tx, ty)
-    local n = love.math.noise(tx * Game.noiseScale, ty * Game.noiseScale)
-    return n < Game.wallThreshold
-end
-
--- 取玩家附近需要检测的瓷砖集合
-local function tilesAroundAABB(ax, ay, aw, ah, tileSize)
-    local left   = math.floor(ax / tileSize)
-    local right  = math.floor((ax + aw - 1) / tileSize)
-    local top    = math.floor(ay / tileSize)
-    local bottom = math.floor((ay + ah - 1) / tileSize)
-    return left, right, top, bottom
-end
-
--- 与瓷砖矩形碰撞（AABB vs tile rect），返回是否相交
-local function aabbOverlap(ax, ay, aw, ah, bx, by, bw, bh)
-    return ax < bx + bw and ax + aw > bx and ay < by + bh and ay + ah > by
-end
-
 function Game.update(dt)
     counter = counter + dt   -- 每帧累加
-    local p = Game.player
-    local vx, vy = 0, 0
+    local isMoving = Core.updatePlayerMovement(Game.player, dt, Game.tileSize, Game.noiseScale, Game.wallThreshold)
+    PlayerAnimation.update(Game.player.anim, dt, isMoving,{"down","up","right","left"})
 
-    if love.keyboard.isDown("left")  or love.keyboard.isDown("a") then vx = vx - 1 end
-    if love.keyboard.isDown("right") or love.keyboard.isDown("d") then vx = vx + 1 end
-    if love.keyboard.isDown("up")    or love.keyboard.isDown("w") then vy = vy - 1 end
-    if love.keyboard.isDown("down")  or love.keyboard.isDown("s") then vy = vy + 1 end
-
-    -- 归一化（避免斜向更快）
-    if vx ~= 0 or vy ~= 0 then
-        local len = math.sqrt(vx*vx + vy*vy)
-        vx, vy = vx/len, vy/len
-    end
-
-    local dx = vx * p.speed * dt
-    local dy = vy * p.speed * dt
-
-    -- 先移动 X，碰到墙则贴边停止
-    if dx ~= 0 then
-        local newX = p.x + dx
-        local left, right, top, bottom = tilesAroundAABB(newX, p.y, p.w, p.h, Game.tileSize)
-        local collided = false
-        for ty = top, bottom do
-            for tx = left, right do
-                if Game.isSolidTile(tx, ty) then
-                    local tileX = tx * Game.tileSize
-                    local tileY = ty * Game.tileSize
-                    if aabbOverlap(newX, p.y, p.w, p.h, tileX, tileY, Game.tileSize, Game.tileSize) then
-                        collided = true
-                        if dx > 0 then -- 往右撞
-                            newX = tileX - p.w
-                        else          -- 往左撞
-                            newX = tileX + Game.tileSize
-                        end
-                    end
-                end
-            end
-        end
-        p.x = newX
-    end
-
-    -- 再移动 Y，同理
-    if dy ~= 0 then
-        local newY = p.y + dy
-        local left, right, top, bottom = tilesAroundAABB(p.x, newY, p.w, p.h, Game.tileSize)
-        for ty = top, bottom do
-            for tx = left, right do
-                if Game.isSolidTile(tx, ty) then
-                    local tileX = tx * Game.tileSize
-                    local tileY = ty * Game.tileSize
-                    if aabbOverlap(p.x, newY, p.w, p.h, tileX, tileY, Game.tileSize, Game.tileSize) then
-                        if dy > 0 then -- 往下撞
-                            newY = tileY - p.h
-                        else          -- 往上撞
-                            newY = tileY + Game.tileSize
-                        end
-                    end
-                end
-            end
-        end
-        p.y = newY
-    end
+    -- 怪物移动（追踪玩家）
+    Monster.update(dt, Game.player, Game.tileSize, Game.noiseScale, Game.wallThreshold,Core)
 
     -- 碰到怪物时触发
-    for i, monster in ipairs(Game.monsters) do
-        if math.abs(Game.player.x - monster.x) < monster.w and
-            math.abs(Game.player.y - monster.y) < monster.h then
-            enterBattle(i, monster)
-            break
-        end
+    local i, monster = Monster.checkCollision(Game.player, Core.aabbOverlap)
+    if i then
+        enterBattle(i, monster)
     end
 end
 
@@ -245,7 +164,7 @@ function Game.draw()
         for i = 0, tilesX do
             local gx = startGX + i
             local gy = startGY + j
-            local tileSolid = Game.isSolidTile(gx, gy)
+            local tileSolid = Core.isSolidTile(gx, gy, Game.noiseScale, Game.wallThreshold)
 
             if tileSolid then
                 love.graphics.setColor(0.45, 0.45, 0.45) -- 墙
@@ -259,29 +178,12 @@ function Game.draw()
         end
     end
 
-    -- 玩家（用世界坐标减摄像机偏移绘制）
-    love.graphics.setColor(1, 0.2, 0.2)
-    love.graphics.rectangle("fill", Game.player.x - camX, Game.player.y - camY, Game.player.w, Game.player.h)
+    love.graphics.setColor(1, 1, 1)
+    PlayerAnimation.draw(Game.player.anim, Game.player.x - camX, Game.player.y - camY, isMoving)
 
     if debugMode then
-        -- 调试内容：绘制计数器
-        love.graphics.print("游戏运行时间: " .. string.format("%.2f", counter), 200, 200)
-    
-        -- 绘制调试信息（右上角）
-        love.graphics.setColor(1,1,1)
-        local w = love.graphics.getWidth()
-        local pressedKeys = {}
-        if love.keyboard.isDown("up") then table.insert(pressedKeys, "UP") end
-        if love.keyboard.isDown("down") then table.insert(pressedKeys, "DOWN") end
-        if love.keyboard.isDown("left") then table.insert(pressedKeys, "LEFT") end
-        if love.keyboard.isDown("right") then table.insert(pressedKeys, "RIGHT") end
-
-        local keysText = "Keys: " .. table.concat(pressedKeys, ", ")
-        local posText = string.format("Player: (%.d, %.d)", Game.player.x, Game.player.y)
-
-        -- 在右上角绘制，保证在屏幕内
-        love.graphics.print(posText, w-250, 20)
-        love.graphics.print(keysText, w-250, 40)
+        Debug.drawInfo(Game.player, counter)
+        Debug.drawPlayerHitbox(Game.player, camX, camY)
     end
 
     local offsetY = h - menuHeight - Layout.virtualHeight  -- 把虚拟坐标整体下移
@@ -296,12 +198,7 @@ function Game.draw()
     Layout.draw("", infoLines, Game.menuButtons, hoveredIndex,offsetY)
 
     -- 绘制怪物
-    for _, monster in ipairs(Game.monsters) do
-        love.graphics.setColor(monster.color)
-        love.graphics.rectangle("fill", monster.x - camX, monster.y - camY, monster.w, monster.h)
-        love.graphics.setColor(1, 1, 1)
-        love.graphics.print(monster.name, monster.x - camX, monster.y - camY - 20)
-    end
+    Monster.draw(camX, camY)
 end
 
 function Game.keypressed(key)

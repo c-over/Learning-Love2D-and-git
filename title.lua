@@ -1,5 +1,6 @@
 -- title.lua
 local Layout = require("layout")
+local Debug = require("debug_utils")
 local Settings = require("settings")
 local Title = {}
 
@@ -21,13 +22,10 @@ Title.buttons = {
         currentScene = "inventory"
     end}
 }
--- -- 只有在 debugMode = true 时才添加额外按钮
--- if debugMode == true then
---     table.insert(Title.Buttons, 
---         {x = 250, y = 380, w = 200, h = 40, text = "背包(调试用)", onClick = function()
---         currentScene = "inventory"
---         end})
---     end
+-- 只有在 debugMode = true 时才添加额外按钮
+if debugMode == true then
+    Debug.openBag()
+    end
 
 function Title.load()
     currentScene = "title"
@@ -69,7 +67,7 @@ function Title.draw()
         Layout.draw("标题菜单 Demo", {}, Title.buttons, selectedIndex)
 
         -- 绘制版本号（右下角小字）
-        local version = "v0.0.6"  -- 这里写当前版本号
+        local version = "v0.0.7"  -- 这里写当前版本号
         local font = love.graphics.getFont()
         local textW = font:getWidth(version)
         local textH = font:getHeight()
