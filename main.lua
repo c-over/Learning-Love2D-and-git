@@ -3,6 +3,7 @@ local Game = require("game")
 local Layout = require("layout")
 local Player = require("player")
 local Battle = require("battle")
+local ShopUI = require("shop_ui")
 local Settings = require("settings")
 local Inventory = require("inventory")
 local InventoryUI = require("inventory_ui")
@@ -15,7 +16,8 @@ function love.load()
     love.window.setMode(Layout.virtualWidth, Layout.virtualHeight, {resizable = true})
     Layout.resize(love.graphics.getWidth(), love.graphics.getHeight()) 
 
-    bgMusic = love.audio.newSource("assets/title.mp3", "stream")
+    coinSound = love.audio.newSource("assets/sounds/coin.wav", "static")
+    bgMusic = love.audio.newSource("assets/sounds/title.mp3", "stream")
     bgMusic:setLooping(true)
     bgMusic:play()
     Settings.init(bgMusic)
@@ -52,6 +54,8 @@ function love.draw()
         InventoryUI.draw()
     elseif currentScene == "battle" then
         Battle.draw()
+    elseif currentScene == "shop" then
+        ShopUI.draw()
     end
 end
 
@@ -69,6 +73,8 @@ function love.keypressed(key)
         InventoryUI.keypressed(key)
     elseif currentScene == "battle" then
         Battle.keypressed(key)
+    elseif currentScene == "shop" then
+        ShopUI.keypressed(key)
     end
 end
 
@@ -91,6 +97,9 @@ function love.mousepressed(x, y, button)
     elseif currentScene == "battle" then
         local result = Battle.mousepressed(x, y, button)
         if result == "title" then currentScene = "title" end
+    elseif currentScene == "shop" then
+        local result = ShopUI.mousepressed(x, y, button)
+        if result == "title" then currentScene = "title" end
     end
 end
 
@@ -107,5 +116,7 @@ function love.mousemoved(x, y, dx, dy, istouch)
         Settings.mousemoved(x, y)
     elseif currentScene == "inventory" then
         InventoryUI.mousemoved(x, y)
+    elseif currentScene == "shop" then
+        ShopUI.mousemoved(x, y)
     end
 end

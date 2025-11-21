@@ -3,22 +3,36 @@ local Layout = require("layout")
 local Inventory = require("inventory")
 local ItemManager = require("ItemManager")
 
-local buttons = {
-    {
-        x = 200, y = 500, w = 200, h = 50,
-        text = "返回游戏",
-        onClick = function()
-            currentScene = "game"
-        end
-    }
-}
-
 local InventoryUI = {}
 InventoryUI.selectedItemIndex = nil
 InventoryUI.actionMenu = nil
 InventoryUI.hoveredItemIndex = nil
+InventoryUI.previousScene = nil
+InventoryUI.onUseItem = nil
+local buttons = {
+    {
+        x = 200, y = 530, w = 200, h = 50,
+        text = "返回游戏",
+        onClick = function()
+            currentScene = InventoryUI.previousScene or "game"
+        end
+    }
+}
 
 function InventoryUI.draw()
+    local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
+
+    -- 半透明背景层
+    love.graphics.setColor(0, 0, 0, 0.5)
+    love.graphics.rectangle("fill", 0, 0, screenW, screenH)
+
+    -- 背包窗口边框
+    local winX, winY, winW, winH = 80, 80, screenW-160, screenH-160
+    love.graphics.setColor(0.2, 0.2, 0.2, 0.8)
+    love.graphics.rectangle("fill", winX, winY, winW, winH)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.rectangle("line", winX, winY, winW, winH)
+
     local slotSize = 64
     local margin = 10
     local startX, startY = 100, 100
@@ -111,7 +125,7 @@ end
 
 function InventoryUI.keypressed(key)
     if key == "escape" then
-        currentScene = "game"
+        currentScene = InventoryUI.previousScene or "game"
     end
 end
 
@@ -150,7 +164,16 @@ function InventoryUI.mousepressed(x, y, button)
                 local def = ItemManager.get(item.id)
                 local options = {}
                 if def.usable then
-                    table.insert(options, {text="使用", action=function() Inventory:useItem(item.id, 1) end})
+                    table.insert(options, {
+                    text="使用",
+                    action=function()
+                    Inventory:useItem(item.id, 1)
+                    if InventoryUI.onUseItem then
+                        InventoryUI.onUseItem(item)  -- 通知调用者
+                    end
+                    currentScene = InventoryUI.previousScene or "game"
+                end
+                    })
                 end
                 if def.stackable and debugMode == true then
                     table.insert(options, {text="添加", action=function() Inventory:addItem(item.id, 1) end})

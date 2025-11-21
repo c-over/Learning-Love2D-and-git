@@ -8,11 +8,21 @@ local data = {
         language = "中文"
     },
     player = {
-        name = "Hero",
-        level = 1,
-        hp = 100,
-        respawnX = 0,
-        respawnY = 0
+        name   = "hero",
+        level  = 1,
+        hp     = 100,
+        maxHp  = 100,
+        mp     = 50,
+        maxMp  = 50,
+        exp    = 0,
+        attack = 10,
+        defense= 5,
+        speed  = 5,
+        gold   = 100,
+        respawnX=0,
+        respawnY=0,
+        x      = 0,
+        y      = 0
     },
     inventory = {
     {

@@ -2,31 +2,31 @@
 local Player = require("player")
 local Layout = require("layout")
 local Config = require("config")
-local ItemManager = require("ItemManager")
+local InventoryUI = require("inventory_ui")
 
 local Battle = {}
--- 在 love.load 或 Battle.load 中定义一个小字号字体
 smallFont = love.graphics.newFont("assets/simhei.ttf",14)
 
-local DISPLAY_TIME = 3      -- 完全显示时间
-local FADE_TIME = 2         -- 渐变暗时间
+local DISPLAY_TIME = 3
+local FADE_TIME = 2
 
 Battle.state = {
     turn = "player",
-    enemy = nil,          -- 敌人数据在 start() 时注入
-    enemyIndex = nil,     -- 地图上对应索引（不直接访问 Game）
+    enemy = nil,
+    enemyIndex = nil,
     log = {},
-    onResolve = nil       -- 战斗结束回调（由 Game 注入）
+    onResolve = nil
 }
+
 local buttons = {
     {x=100, y=400, w=120, h=40, text="攻击", onClick=function() Battle.playerAttack() end},
-    {x=250, y=400, w=120, h=40, text="物品", onClick=function() Battle.useItem(3) end}, -- 示例：治疗药水
+    {x=250, y=400, w=120, h=40, text="物品", onClick=function()  Battle.useItem() end},
     {x=400, y=400, w=120, h=40, text="逃跑", onClick=function() currentScene = "game" end}
 }
 
 local selectedIndex = nil
 
-local function addLog(msg)  --显示日志
+local function addLog(msg)
     table.insert(Battle.state.log, {text = msg, time = love.timer.getTime()})
 end
 
@@ -34,7 +34,8 @@ function Battle.start(enemyPayload, enemyIndex, onResolve)
     Battle.state.enemy = {
         name = enemyPayload.name,
         level = enemyPayload.level or 1,
-        hp = enemyPayload.hp or 50
+        hp = enemyPayload.hp or 50,
+        maxHp = enemyPayload.hp or 50
     }
     Battle.state.enemyIndex = enemyIndex
     Battle.state.onResolve = onResolve
@@ -58,12 +59,14 @@ function Battle.playerAttack()
     Battle.state.turn = "enemy"
 end
 
--- 使用物品：调用 ItemManager
-function Battle.useItem(itemId)
-    ItemManager.use(itemId, Player)
-    local item = ItemManager.get(itemId)
-    addLog("使用了物品：" .. (item and item.name or "未知"))
-    Battle.state.turn = "enemy"
+-- 使用物品
+function Battle.useItem()
+    InventoryUI.previousScene = "battle"
+    InventoryUI.onUseItem = function(item)
+        addLog("使用了物品：" .. (item and item.name or "未知"))
+        Battle.state.turn = "enemy"
+    end
+    currentScene = "inventory"
 end
 
 function Battle.enemyTurn()
@@ -95,24 +98,60 @@ end
 
 -- 绘制战斗界面
 function Battle.draw()
-     -- 保存当前字体
     local oldFont = love.graphics.getFont()
 
+    -- 绘制玩家状态条（左下角）
+    local barWidth, barHeight = 200, 20
+    local margin = 20
+    local x = margin
+    local y = love.graphics.getHeight() - 100
+
+    -- HP 条
+    love.graphics.setColor(0.3,0.3,0.3)
+    love.graphics.rectangle("fill", x, y, barWidth, barHeight)
+    local hpRatio = (Player.data.hp or 0) / (Player.data.maxHp or 1)
+    love.graphics.setColor(1,0,0)
+    love.graphics.rectangle("fill", x, y, barWidth * hpRatio, barHeight)
+    love.graphics.setColor(1,1,1)
+    love.graphics.print("HP: "..(Player.data.hp or 0).."/"..(Player.data.maxHp or 0), x, y)
+
+    -- MP 条
+    local mpY = y + barHeight + 5
+    love.graphics.setColor(0.3,0.3,0.3)
+    love.graphics.rectangle("fill", x, mpY, barWidth, barHeight)
+    local mpRatio = (Player.data.mp or 0) / (Player.data.maxMp or 1)
+    love.graphics.setColor(0,0,1)
+    love.graphics.rectangle("fill", x, mpY, barWidth * mpRatio, barHeight)
+    love.graphics.setColor(1,1,1)
+    love.graphics.print("MP: "..(Player.data.mp or 0).."/"..(Player.data.maxMp or 0), x, mpY)
+
+    -- 绘制敌人血量条（右上角）
+    local ex = love.graphics.getWidth() - barWidth - margin
+    local ey = margin
+    love.graphics.setColor(0.3,0.3,0.3)
+    love.graphics.rectangle("fill", ex, ey, barWidth, barHeight)
+    local enemyHpRatio = (Battle.state.enemy and Battle.state.enemy.hp or 0) / (Battle.state.enemy and Battle.state.enemy.maxHp or 1)
+    love.graphics.setColor(1,0,0)
+    love.graphics.rectangle("fill", ex, ey, barWidth * enemyHpRatio, barHeight)
+    love.graphics.setColor(1,1,1)
+    if Battle.state.enemy then
+        love.graphics.print(Battle.state.enemy.name.." HP: "..Battle.state.enemy.hp.."/"..Battle.state.enemy.maxHp, ex, ey)
+    end
+
+    -- 绘制操作按钮和信息
     local infoLines = {
-        "玩家 HP: " .. (Player.data.hp or 0),
         "玩家等级: " .. (Player.data.level or 1),
-        "敌人 HP: " .. (Battle.state.enemy and Battle.state.enemy.hp or 0),
         "敌人等级: " .. (Battle.state.enemy and Battle.state.enemy.level or 1),
     }
     Layout.draw("战斗界面", infoLines, buttons, selectedIndex or -1, 0)
 
-    -- 绘制操作信息日志在屏幕右侧
+    -- 绘制日志（右侧）
     love.graphics.setFont(smallFont)
     local now = love.timer.getTime()
-    local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
-    local logX = screenW - 300   -- 消息框宽度 300px
-    local logY = 100             -- 距离顶部 100px
-    local logWidth = 280         -- 文本区域宽度
+    local screenW = love.graphics.getWidth()
+    local logX = screenW - 300
+    local logY = 150
+    local logWidth = 280
 
     for i = #Battle.state.log, 1, -1 do
         local entry = Battle.state.log[i]
@@ -123,17 +162,15 @@ function Battle.draw()
             if age > DISPLAY_TIME then
                 alpha = 1 - (age - DISPLAY_TIME) / FADE_TIME
             end
-            love.graphics.setColor(1, 1, 1, alpha)
+            love.graphics.setColor(1,1,1,alpha)
             love.graphics.printf(msg, logX, logY, logWidth, "right")
             logY = logY + 20
         end
     end
 
-    -- 恢复原字体，避免影响其他绘制
     love.graphics.setFont(oldFont)
     love.graphics.setColor(1,1,1,1)
 end
-
 
 function Battle.mousepressed(x, y, button)
     Layout.mousepressed(x, y, button, buttons)

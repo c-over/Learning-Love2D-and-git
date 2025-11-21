@@ -11,6 +11,9 @@ local Player = require("player")
 local Config = require("config")
 local Battle = require("battle")
 local Monster = require("monster")
+local Merchant = require("merchant")
+local ShopUI = require("shop_ui")
+local Pickup = require("pickup")
 local InventoryUI = require("inventory_ui")
 local PlayerAnimation = require("PlayerAnimation")
 
@@ -32,7 +35,9 @@ Game.menuButtons = {
         y = menuTop + (menuHeight - 40) / 2,
         w = 120, h = 40,
         text = "背包",
-        onClick = function() currentScene = "inventory" end
+        onClick = function() 
+            InventoryUI.previousScene = currentScene
+            currentScene = "inventory" end
     },
     {
         x = 400, 
@@ -50,7 +55,7 @@ Game.menuButtons = {
     }
 }
 
--- 进入战斗
+ -- 进入战斗
 local function enterBattle(i, monster)
     if Player.data.hp > 0 then 
         Battle.start(
@@ -59,14 +64,20 @@ local function enterBattle(i, monster)
             function(outcome, enemyIndex)
                 if outcome.result == "win" then
                     -- 删除该怪物，避免死循环
-                    table.remove(Game.monsters, enemyIndex)
-                    -- 奖励逻辑可在此实现（比如增加等级或给物品）
-                    Player.addLevel(1)
+                    table.remove(Monster.list, enemyIndex)
+                    -- 奖励逻辑：提供经验而不是直接升级
+                    local expReward = monster.level * 50  -- 简单经验公式，可调整
+                    Player.gainExp(expReward)
+                    print("获得经验：" .. expReward)
+                    
                 elseif outcome.result == "lose" then
-                    -- 失败处理（回到标题或惩罚）
+                    -- 失败处理：重置血量，避免负值
+                    Player.data.hp = Player.data.maxHp
+                    print("你被击败了，血量已重置为满值")
                     currentScene = "title"
-                return
+                    return
                 end
+
                 -- 回到游戏场景
                 currentScene = "game"
             end
@@ -87,12 +98,12 @@ function Game.load()
 
     -- 玩家（世界坐标，像素）
     local rx, ry = Config.getRespawn()
-    
     Game.player = {
     x = rx or 0,
     y = ry or 0,
     w = 32, h = 32, --玩家碰撞箱大小
     speed = 240,
+    gold = 100, 
     anim = PlayerAnimation.load("assets/Character/Idle.png", "assets/Character/Walk.png", 32, 32)
     }
 
@@ -134,6 +145,17 @@ function Game.update(dt)
     if i then
         enterBattle(i, monster)
     end
+
+    -- 检查是否靠近商人
+    local npc = Merchant.checkCollision(Game.player, aabbOverlap)
+    if npc then
+        Game.nearMerchant = npc
+    else
+        Game.nearMerchant = nil
+    end
+
+    --检测奖励
+    Pickup.update(dt, Game.player, Game.tileSize, Game.noiseScale, Game.wallThreshold, coinSound)
 end
 
 -- 根据噪声生成地形：0=草地, 1=墙
@@ -197,13 +219,68 @@ function Game.draw()
     local hoveredIndex = Layout.mousemoved(love.mouse.getX(), love.mouse.getY(), Game.menuButtons or {})
     Layout.draw("", infoLines, Game.menuButtons, hoveredIndex,offsetY)
 
-    -- 绘制怪物
-    Monster.draw(camX, camY)
+    Monster.draw(camX, camY)    -- 绘制怪物
+    Merchant.draw(camX, camY)   -- 绘制商人
+    -- 如果靠近商人，显示提示
+    if Game.nearMerchant then
+        love.graphics.setColor(1,1,1)
+        love.graphics.print("按 Z 键与 "..Game.nearMerchant.name.." 交谈", 200, 50)
+    end
+    Pickup.draw(camX, camY)
+
+    -- 绘制玩家状态条
+    Game.drawStatusBar()
+end
+
+-- 绘制血量和魔力条
+function Game.drawStatusBar()
+    local margin = 20
+    local barWidth = 200
+    local barHeight = 20
+    local x = love.graphics.getWidth() - barWidth - margin
+    local y = margin
+
+    -- 血量条背景
+    love.graphics.setColor(0.3, 0.3, 0.3) -- 灰色背景
+    love.graphics.rectangle("fill", x, y, barWidth, barHeight)
+
+    -- 血量条填充
+    local hpRatio = Player.data.hp / Player.data.maxHp
+    love.graphics.setColor(1, 0, 0) -- 红色血量
+    love.graphics.rectangle("fill", x, y, barWidth * hpRatio, barHeight)
+
+    -- 血量文字
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print("HP: " .. Player.data.hp .. "/" .. Player.data.maxHp, x, y)
+
+    -- 魔力条背景
+    local mpY = y + barHeight + 5
+    love.graphics.setColor(0.3, 0.3, 0.3)
+    love.graphics.rectangle("fill", x, mpY, barWidth, barHeight)
+
+    -- 魔力条填充
+    local mpRatio = Player.data.mp / Player.data.maxMp
+    love.graphics.setColor(0, 0, 1) -- 蓝色魔力
+    love.graphics.rectangle("fill", x, mpY, barWidth * mpRatio, barHeight)
+
+    -- 魔力文字
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print("MP: " .. Player.data.mp .. "/" .. Player.data.maxMp, x, mpY)
+
+    -- 经验值条
+    local expY = mpY + barHeight + 5
+    love.graphics.setColor(0.3, 0.3, 0.3)
+    love.graphics.rectangle("fill", x, expY, barWidth, barHeight)
+    local expRatio = Player.data.exp / (Player.data.level * 100)
+    love.graphics.setColor(0, 1, 0)
+    love.graphics.rectangle("fill", x, expY, barWidth * expRatio, barHeight)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print("EXP: " .. Player.data.exp .. "/" .. (Player.data.level * 100), x, expY)
 end
 
 function Game.keypressed(key)
-    if key == "escape" then
-        currentScene = "title"
+    if key == "z" and Game.nearMerchant then
+        ShopUI.open(Game.nearMerchant)
     end
 end
 
