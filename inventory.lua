@@ -1,3 +1,4 @@
+--inventory.lua
 local Inventory = {}
 local Player = require("player")
 local Config = require("config")
@@ -18,7 +19,8 @@ function Inventory.load()
     else    --自动初始化物品
         Inventory.items = {
             {id = 1, count = 3},
-            {id = 2, count = 1}
+            {id = 2, count = 1},
+            {id = 3, count = 1}
         }
         Config.updateInventory(Inventory.items)
     end

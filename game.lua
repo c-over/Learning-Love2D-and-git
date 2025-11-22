@@ -89,7 +89,6 @@ end
 
 function Game.load()
     Config.load()
-    Monster.load()
     Game.tileSize = 32
     -- 玩家像素坐标（屏幕中心）
     -- 统一噪声参数
@@ -101,7 +100,7 @@ function Game.load()
     Game.player = {
     x = rx or 0,
     y = ry or 0,
-    w = 32, h = 32, --玩家碰撞箱大小
+    w = 16, h = 20, --玩家碰撞箱大小
     speed = 240,
     gold = 100, 
     anim = PlayerAnimation.load("assets/Character/Idle.png", "assets/Character/Walk.png", 32, 32)
@@ -119,9 +118,10 @@ function Game.load()
         for ty = -radius, radius do
             for tx = -radius, radius do
                 if not isSolid(tx, ty) then
-                    gx, gy = tx, ty
-                    Game.player.x = gx * Game.tileSize + (Game.tileSize - Game.player.w) / 2
-                    Game.player.y = gy * Game.tileSize + (Game.tileSize - Game.player.h) / 2
+                     gx, gy = tx, ty
+                    -- 设置为格子中心
+                    Game.player.x = gx * Game.tileSize + Game.tileSize/2
+                    Game.player.y = gy * Game.tileSize + Game.tileSize/2
                     return
                 end
             end
@@ -173,9 +173,9 @@ function Game.draw()
     local tilesX = math.floor(w / Game.tileSize)
     local tilesY = math.floor(h / Game.tileSize)
 
-    -- 摄像机：把玩家放屏幕中心
-    local camX = Game.player.x + Game.player.w/2 - w/2
-    local camY = Game.player.y + Game.player.h/2 - h/2
+    -- 摄像机以中心点居中
+    local camX = Game.player.x - w/2
+    local camY = Game.player.y - h/2
 
     -- 屏幕左上角对应的世界格子
     local startGX = math.floor(camX / Game.tileSize)
@@ -201,11 +201,15 @@ function Game.draw()
     end
 
     love.graphics.setColor(1, 1, 1)
-    PlayerAnimation.draw(Game.player.anim, Game.player.x - camX, Game.player.y - camY, isMoving)
+    -- 绘制玩家（中心点 → 左上角）
+    PlayerAnimation.draw(Game.player.anim,
+        Game.player.x - 16 - camX,
+        Game.player.y - 16 - camY,
+        isMoving)
 
     if debugMode then
         Debug.drawInfo(Game.player, counter)
-        Debug.drawPlayerHitbox(Game.player, camX, camY)
+        Debug.drawHitbox(Game.player, camX, camY)
     end
 
     local offsetY = h - menuHeight - Layout.virtualHeight  -- 把虚拟坐标整体下移

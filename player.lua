@@ -51,7 +51,7 @@ function Player.addLevel(amount)
     Player.data.mp     = Player.data.maxMp
     Player.data.attack = Player.data.attack + 5 * inc
     Player.data.defense= Player.data.defense + 3 * inc
-    save()
+    Player.save()
 end
 
 -- 增加血量

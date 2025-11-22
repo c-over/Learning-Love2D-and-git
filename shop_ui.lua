@@ -5,33 +5,32 @@ local Player = require("player")
 
 local ShopUI = {}
 ShopUI.merchant = nil
-ShopUI.leftButtons = {}
-ShopUI.rightButtons = {}
-ShopUI.selectedSide = "right"
-ShopUI.selectedIndex = 1
+ShopUI.buttons = {}       -- 所有按钮统一存放
+ShopUI.selectedSide = nil -- "left" / "right" / "back"
+ShopUI.selectedIndex = nil
 
-ShopUI.backButton = {
-    { x = 350, y = 500, w = 100, h = 40, text = "返回", onClick = function()
-        currentScene = "game"
-    end }
-}
+-- 工具函数：计算卖出价
+local function getSellPrice(def)
+    return math.floor((def.price or 10) * 0.5)
+end
 
+-- 打开商店
 function ShopUI.open(merchant)
     ShopUI.merchant = merchant
+    ShopUI.buttons = {}
     ShopUI.selectedSide = "right"
     ShopUI.selectedIndex = 1
-    ShopUI.leftButtons = {}
-    ShopUI.rightButtons = {}
 
     -- 左列：背包物品
-    local startY = 150
+    local startY = 200
     for i, item in ipairs(Inventory.items) do
         local def = ItemManager.get(item.id)
-        table.insert(ShopUI.leftButtons, {
-            x = 100, y = startY + (i-1)*60 + 50, w = 250, h = 50,
+        table.insert(ShopUI.buttons, {
+            side = "left", index = i,
+            x = 100, y = startY + (i-1)*60, w = 250, h = 50,
             text = def.name,
             onClick = function()
-                local sellPrice = math.floor((def.price or 10)*0.5)
+                local sellPrice = getSellPrice(def)
                 Player.data.gold = Player.data.gold + sellPrice
                 Inventory:removeItem(item.id, 1)
                 print("出售成功: "..def.name.." +"..sellPrice.."金币")
@@ -40,11 +39,12 @@ function ShopUI.open(merchant)
     end
 
     -- 右列：商人货物
-    local startY2 = 150
+    local startY2 = 200
     for i, item in ipairs(merchant.items) do
         local def = ItemManager.get(item.id)
-        table.insert(ShopUI.rightButtons, {
-            x = 450, y = startY2 + (i-1)*60 + 50, w = 250, h = 50,
+        table.insert(ShopUI.buttons, {
+            side = "right", index = i,
+            x = 450, y = startY2 + (i-1)*60, w = 250, h = 50,
             text = def.name,
             onClick = function()
                 if Player.data.gold >= item.price then
@@ -58,38 +58,57 @@ function ShopUI.open(merchant)
         })
     end
 
+    -- 返回按钮
+    table.insert(ShopUI.buttons, {
+        side = "back", index = 1,
+        x = 350, y = 500, w = 100, h = 40,
+        text = "返回",
+        onClick = function()
+            currentScene = "game"
+        end
+    })
+
     currentScene = "shop"
 end
 
+-- 绘制
 function ShopUI.draw()
     if not ShopUI.merchant then return end
     local infoLines = { "你的金币: "..Player.data.gold ,"出售物品              购买物品 "}
 
-    -- 绘制左列（背包）
-    Layout.draw("商店", infoLines, ShopUI.leftButtons,
+    -- 按钮分组绘制
+    local leftButtons, rightButtons, backButtons = {}, {}, {}
+    for _, btn in ipairs(ShopUI.buttons) do
+        if btn.side == "left" then table.insert(leftButtons, btn)
+        elseif btn.side == "right" then table.insert(rightButtons, btn)
+        elseif btn.side == "back" then table.insert(backButtons, btn) end
+    end
+
+    Layout.draw("商店", infoLines, leftButtons,
         ShopUI.selectedSide=="left" and ShopUI.selectedIndex or nil)
-    -- 绘制右列（商人）
-    Layout.draw("商店", {}, ShopUI.rightButtons,
+    Layout.draw("商店", {}, rightButtons,
         ShopUI.selectedSide=="right" and ShopUI.selectedIndex or nil)
-    -- 绘制返回按钮
-    Layout.draw("", {}, ShopUI.backButton,
+    Layout.draw("", {}, backButtons,
         ShopUI.selectedSide=="back" and ShopUI.selectedIndex or nil)
 
     -- 悬停提示框
     if ShopUI.selectedSide and ShopUI.selectedIndex then
-        local def, text
+        local text
         if ShopUI.selectedSide=="left" then
             local item = Inventory.items[ShopUI.selectedIndex]
-            def = ItemManager.get(item.id)
-            if def then
-                local sellPrice = math.floor((def.price or 10)*0.5)
-                text = def.name.." x"..item.count.."\n卖出价格: "..sellPrice.." 金币"
+            if item then
+                local def = ItemManager.get(item.id)
+                if def then
+                    text = def.name.." x"..item.count.."\n卖出价格: "..getSellPrice(def).." 金币"
+                end
             end
         elseif ShopUI.selectedSide=="right" then
             local item = ShopUI.merchant.items[ShopUI.selectedIndex]
-            def = ItemManager.get(item.id)
-            if def then
-                text = def.name.."\n买入价格: "..item.price.." 金币"
+            if item then
+                local def = ItemManager.get(item.id)
+                if def then
+                    text = def.name.."\n买入价格: "..item.price.." 金币"
+                end
             end
         elseif ShopUI.selectedSide=="back" then
             text = "返回游戏"
@@ -110,70 +129,68 @@ function ShopUI.draw()
             local totalWidth = maxWidth + padding*2
 
             love.graphics.setColor(0,0,0,0.7)
-            love.graphics.rectangle("fill", mx, my, totalWidth, totalHeight)
+            love.graphics.rectangle("fill", mx+16, my+16, totalWidth, totalHeight)
             love.graphics.setColor(1,1,1)
-            love.graphics.rectangle("line", mx, my, totalWidth, totalHeight)
+            love.graphics.rectangle("line", mx+16, my+16, totalWidth, totalHeight)
 
-            local yOffset = my + padding
+            local yOffset = my + 16 + padding
             for _, line in ipairs(lines) do
-                love.graphics.print(line, mx+padding, yOffset)
+                love.graphics.print(line, mx+16+padding, yOffset)
                 yOffset = yOffset + font:getHeight()
             end
         end
     end
-
 end
 
+-- 鼠标移动
 function ShopUI.mousemoved(x,y)
-    -- 默认清空
     ShopUI.selectedSide = nil
     ShopUI.selectedIndex = nil
-    -- 检查左列
-    local idx = Layout.mousemoved(x,y,ShopUI.leftButtons)
-    if idx then
-        ShopUI.selectedSide = "left"
-        ShopUI.selectedIndex = idx
-        return
-    end
-    -- 检查右列
-    idx = Layout.mousemoved(x,y,ShopUI.rightButtons)
-    if idx then
-        ShopUI.selectedSide = "right"
-        ShopUI.selectedIndex = idx
-    end
-
-    idx = Layout.mousemoved(x,y,ShopUI.backButton)
-    if idx then
-        ShopUI.selectedSide = "back"
-        ShopUI.selectedIndex = idx
+    for _, btn in ipairs(ShopUI.buttons) do
+        local idx = Layout.mousemoved(x,y,{btn})
+        if idx then
+            ShopUI.selectedSide = btn.side
+            ShopUI.selectedIndex = btn.index
+            return
+        end
     end
 end
 
-function ShopUI.mousepressed(x,y,button) -- 如果没有悬停到任何按钮，清空状态
-    if Layout.mousepressed(x,y,button,ShopUI.leftButtons) then
-        ShopUI.selectedSide="left"
-    elseif Layout.mousepressed(x,y,button,ShopUI.rightButtons) then
-        ShopUI.selectedSide="right"
+-- 鼠标点击
+function ShopUI.mousepressed(x,y,button)
+    for _, btn in ipairs(ShopUI.buttons) do
+        if Layout.mousepressed(x,y,button,{btn}) then
+            ShopUI.selectedSide = btn.side
+            ShopUI.selectedIndex = btn.index
+            if btn.onClick then btn.onClick() end
+            return
+        end
     end
-   
 end
 
+-- 键盘操作
 function ShopUI.keypressed(key)
     if ShopUI.selectedIndex then
         if key=="left" then
             ShopUI.selectedSide="left"
-            ShopUI.selectedIndex=math.min(ShopUI.selectedIndex,#ShopUI.leftButtons)
+            ShopUI.selectedIndex=math.min(ShopUI.selectedIndex,#Inventory.items)
         elseif key=="right" then
             ShopUI.selectedSide="right"
-            ShopUI.selectedIndex=math.min(ShopUI.selectedIndex,#ShopUI.rightButtons)
+            ShopUI.selectedIndex=math.min(ShopUI.selectedIndex,#ShopUI.merchant.items)
         elseif key=="up" then
             ShopUI.selectedIndex=math.max(1,ShopUI.selectedIndex-1)
         elseif key=="down" then
-            local max=(ShopUI.selectedSide=="left") and #ShopUI.leftButtons or #ShopUI.rightButtons
+            local max=0
+            if ShopUI.selectedSide=="left" then max=#Inventory.items
+            elseif ShopUI.selectedSide=="right" then max=#ShopUI.merchant.items
+            elseif ShopUI.selectedSide=="back" then max=1 end
             ShopUI.selectedIndex=math.min(max,ShopUI.selectedIndex+1)
         elseif key=="return" or key=="space" then
-            local btn=(ShopUI.selectedSide=="left") and ShopUI.leftButtons[ShopUI.selectedIndex] or ShopUI.rightButtons[ShopUI.selectedIndex]
-            if btn and btn.onClick then btn.onClick() end
+            for _, btn in ipairs(ShopUI.buttons) do
+                if btn.side==ShopUI.selectedSide and btn.index==ShopUI.selectedIndex then
+                    if btn.onClick then btn.onClick() end
+                end
+            end
         end
     elseif key=="escape" then
         currentScene="game"

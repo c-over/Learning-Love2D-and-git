@@ -20,6 +20,15 @@ local buttons = {
 }
 
 function InventoryUI.draw()
+    if debugMode == true then
+        table.insert(buttons, {
+            x = 420, y = 530, w = 200, h = 50,
+            text = "图标浏览器",
+            onClick = function()
+                currentScene = "icon_browser"
+            end
+        })
+    end
     local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
 
     -- 半透明背景层

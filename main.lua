@@ -6,12 +6,14 @@ local Battle = require("battle")
 local ShopUI = require("shop_ui")
 local Settings = require("settings")
 local Inventory = require("inventory")
+local IconBrowser = require("IconBrowser")
 local InventoryUI = require("inventory_ui")
 
 function love.load()
     -- 全局初始化
     local font = love.graphics.newFont("assets/simhei.ttf", 28)
     love.graphics.setFont(font)
+    IconBrowser.load("assets/icon.png") -- 加载图标素材
 
     love.window.setMode(Layout.virtualWidth, Layout.virtualHeight, {resizable = true})
     Layout.resize(love.graphics.getWidth(), love.graphics.getHeight()) 
@@ -38,6 +40,8 @@ function love.update(dt)
         Game.update(dt)
     elseif currentScene == "battle" then
         Battle.update(dt)
+    elseif currentScene == "icon_browser" then
+        IconBrowser.update(dt)
     end
 end
 
@@ -52,10 +56,13 @@ function love.draw()
         Player.draw()
     elseif currentScene == "inventory" then
         InventoryUI.draw()
+    elseif currentScene == "icon_browser" then
+        IconBrowser.draw(currentScene, "icon_browser")
     elseif currentScene == "battle" then
         Battle.draw()
     elseif currentScene == "shop" then
         ShopUI.draw()
+   
     end
 end
 
@@ -71,6 +78,8 @@ function love.keypressed(key)
         Settings.keypressed(key)
     elseif currentScene == "inventory" then
         InventoryUI.keypressed(key)
+    elseif currentScene == "icon_browser" and key == "escape" then
+        currentScene = InventoryUI.previousScene or "inventory"
     elseif currentScene == "battle" then
         Battle.keypressed(key)
     elseif currentScene == "shop" then
@@ -116,7 +125,15 @@ function love.mousemoved(x, y, dx, dy, istouch)
         Settings.mousemoved(x, y)
     elseif currentScene == "inventory" then
         InventoryUI.mousemoved(x, y)
+    elseif currentScene == "icon_browser" then
+        IconBrowser.mousemoved(x, y)
     elseif currentScene == "shop" then
         ShopUI.mousemoved(x, y)
+    end
+end
+
+function love.wheelmoved(x, y)
+    if currentScene == "icon_browser" then
+        IconBrowser.wheelmoved(x, y)
     end
 end
