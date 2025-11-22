@@ -1,0 +1,47 @@
+  {
+  "1": {
+    "name": "经验药水",
+    "icon": "assets/potion_new.png",
+    "description": "使用后提升1级",
+    "usable": true,
+    "stackable": true,
+    "posable": true,
+    "onUse": "addLevel:1"
+  },
+  "2": {
+    "name": "大经验药水",
+    "icon": "assets/big_potion_new.png",
+    "description": "使用后提升3级",
+    "usable": true,
+    "stackable": true,
+    "posable": true,
+    "onUse": "addLevel:3"
+  },
+  "3": {
+    "name": "治疗药水",
+    "icon": "assets/Hi_potion.png",
+    "description": "恢复50点生命值",
+    "usable": true,
+    "stackable": true,
+    "posable": true,
+    "onUse": "addHP:50"
+  },
+  "4": {
+    "name": "未知物品",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 13,
+    "description": "问号，占位用",
+    "usable": false,
+    "stackable": true,
+    "posable": true
+  },
+  "5": {
+    "name": "金币",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 131,
+    "description": "货币，可以购买物品",
+    "usable": false,
+    "stackable": true,
+    "posable": true
+  }
+}
