@@ -1,3 +1,4 @@
+local Core = require("core")
 local EntitySpawner = {}
 
 function EntitySpawner.new(config)
@@ -18,7 +19,7 @@ function EntitySpawner.new(config)
     end
 
     -- 在玩家周围生成实体
-    function spawner.generateAroundPlayer(player, tileSize, noiseScale, wallThreshold)
+    function spawner.generateAroundPlayer(player, tileSize, Core)
         local cfg = spawner.config
         local px, py = math.floor(player.x / tileSize), math.floor(player.y / tileSize)
 
@@ -37,7 +38,7 @@ function EntitySpawner.new(config)
             for tx = px - cfg.radius, px + cfg.radius do
                 local dx, dy = tx - px, ty - py
                 if math.abs(dx * tileSize) > cfg.noSpawnRange or math.abs(dy * tileSize) > cfg.noSpawnRange then
-                    if love.math.random() < cfg.density and not cfg.isSolid(tx, ty, noiseScale, wallThreshold) then
+                    if love.math.random() < cfg.density and not Core.isSolidTile(tx, ty) then
                         if not existsAt(tx, ty, tileSize) then
                             table.insert(spawner.list, cfg.spawnFunc(tx, ty, tileSize))
                         end
@@ -46,19 +47,17 @@ function EntitySpawner.new(config)
             end
         end
     end
-
     -- 更新逻辑
-    function spawner.update(dt, player, tileSize, noiseScale, wallThreshold, Core)
-        spawner.spawnTimer = spawner.spawnTimer + dt
+    function spawner.update(dt, player, tileSize, Core)
+            spawner.spawnTimer = spawner.spawnTimer + dt
         if spawner.spawnTimer >= spawner.config.spawnInterval then
             spawner.spawnTimer = 0
-            spawner.generateAroundPlayer(player, tileSize, noiseScale, wallThreshold)
+            spawner.generateAroundPlayer(player, tileSize, Core)
         end
 
         for _, e in ipairs(spawner.list) do
             if spawner.config.updateFunc then
-                -- 明确传递参数，不用 ...
-                spawner.config.updateFunc(e, dt, player, tileSize, noiseScale, wallThreshold, Core)
+                spawner.config.updateFunc(e, dt, player, tileSize, Core)
             end
         end
 

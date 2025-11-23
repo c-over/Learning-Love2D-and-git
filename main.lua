@@ -42,10 +42,10 @@ function love.update(dt)
         Battle.update(dt)
     elseif currentScene == "icon_browser" then
         IconBrowser.update(dt)
-    end
+    end 
 end
 
-function love.draw()
+function love.draw()  
     if currentScene == "title" then
         Title.draw()
     elseif currentScene == "game" then
@@ -62,7 +62,11 @@ function love.draw()
         Battle.draw()
     elseif currentScene == "shop" then
         ShopUI.draw()
-   
+    end
+    if debugMode then
+        love.graphics.setColor(1, 0, 0.5, 0.8)
+        love.graphics.print("当前场景: " .. currentScene, 0, 0)
+        love.graphics.setColor(1, 1, 1, 1)
     end
 end
 

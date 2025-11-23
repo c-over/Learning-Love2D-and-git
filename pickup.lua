@@ -32,9 +32,10 @@ local Pickup = EntitySpawner.new({
     radius        = 15,
     maxNearby     = 10,
     maxDistance   = 30,
-    isSolid       = Core.isSolidTile,
+    isSolid       = function(tx, ty) return Core.isSolidTile(tx, ty) end,
     spawnFunc     = spawnPickup,
-    updateFunc    = function(pickup, dt, player, tileSize, noiseScale, wallThreshold, coinSound)
+
+    updateFunc    = function(pickup, dt, player, tileSize, Core, coinSound)
         -- 闪烁动画
         pickup.blink = pickup.blink + dt * 5
 
@@ -56,11 +57,11 @@ local Pickup = EntitySpawner.new({
             -- 增加金币并保存
             Player.data.gold = Player.data.gold + pickup.reward
             Player.save()
-            -- 从列表中移除该金币
             return true  -- 返回 true 表示需要删除
         end
         return false
     end,
+
     drawFunc      = function(pickup, camX, camY)
         local alpha = (math.sin(pickup.blink) * 0.5 + 0.5)
         love.graphics.setColor(pickup.color[1], pickup.color[2], pickup.color[3], alpha)
@@ -71,13 +72,14 @@ local Pickup = EntitySpawner.new({
 
 -- 扩展 update：处理浮动文字和金币删除
 local oldUpdate = Pickup.update
-function Pickup.update(dt, player, tileSize, noiseScale, wallThreshold, coinSound)
-    oldUpdate(dt, player, tileSize, noiseScale, wallThreshold, coinSound)
+function Pickup.update(dt, player, tileSize, Core, coinSound)
+    -- 调用 EntitySpawner.update
+    oldUpdate(dt, player, tileSize, Core)
 
     -- 删除已拾取的金币
     for i = #Pickup.list, 1, -1 do
         local p = Pickup.list[i]
-        if Pickup.config.updateFunc(p, dt, player, tileSize, noiseScale, wallThreshold, coinSound) then
+        if Pickup.config.updateFunc(p, dt, player, tileSize, Core, coinSound) then
             table.remove(Pickup.list, i)
         end
     end

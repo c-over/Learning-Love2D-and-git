@@ -1,9 +1,10 @@
 local Core = {}
+local Map = require("map")  -- 引入 Map 模块
 
--- 地图判定：格子是否为墙
-function Core.isSolidTile(tx, ty, noiseScale, wallThreshold)
-    local n = love.math.noise(tx * noiseScale, ty * noiseScale)
-    return n < wallThreshold
+-- 地图判定：格子是否为墙/不可通行
+function Core.isSolidTile(tx, ty)
+    local tile = Map.getTile(tx, ty)
+    return tile == "tree" or tile == "rock" or tile == "water"
 end
 
 -- AABB：左上角坐标 + 宽高
@@ -29,7 +30,7 @@ function Core.checkCollision(objA, objB)
 end
 
 -- 玩家移动逻辑（中心点）
-function Core.updatePlayerMovement(player, dt, tileSize, noiseScale, wallThreshold, PlayerAnimation)
+function Core.updatePlayerMovement(player, dt, tileSize)
     local vx, vy = 0, 0
     if love.keyboard.isDown("left")  or love.keyboard.isDown("a") then vx = vx - 1 end
     if love.keyboard.isDown("right") or love.keyboard.isDown("d") then vx = vx + 1 end
@@ -60,7 +61,7 @@ function Core.updatePlayerMovement(player, dt, tileSize, noiseScale, wallThresho
         local left, right, top, bottom = Core.tilesAroundAABB(ax, ay, player.w, player.h, tileSize)
         for ty = top, bottom do
             for tx = left, right do
-                if Core.isSolidTile(tx, ty, noiseScale, wallThreshold) then
+                if Core.isSolidTile(tx, ty) then
                     local tileX = tx * tileSize
                     local tileY = ty * tileSize
                     if Core.aabbOverlap(ax, ay, player.w, player.h, tileX, tileY, tileSize, tileSize) then
@@ -85,7 +86,7 @@ function Core.updatePlayerMovement(player, dt, tileSize, noiseScale, wallThresho
         local left, right, top, bottom = Core.tilesAroundAABB(ax, ay, player.w, player.h, tileSize)
         for ty = top, bottom do
             for tx = left, right do
-                if Core.isSolidTile(tx, ty, noiseScale, wallThreshold) then
+                if Core.isSolidTile(tx, ty) then
                     local tileX = tx * tileSize
                     local tileY = ty * tileSize
                     if Core.aabbOverlap(ax, ay, player.w, player.h, tileX, tileY, tileSize, tileSize) then
@@ -106,7 +107,7 @@ function Core.updatePlayerMovement(player, dt, tileSize, noiseScale, wallThresho
 end
 
 -- 怪物移动逻辑（中心点）
-function Core.updateMonsterMovement(monster, dt, tileSize, noiseScale, wallThreshold, target)
+function Core.updateMonsterMovement(monster, dt, tileSize, target)
     local vx, vy = monster.vx or 0, monster.vy or 0
 
     if target then
@@ -129,7 +130,7 @@ function Core.updateMonsterMovement(monster, dt, tileSize, noiseScale, wallThres
         local left, right, top, bottom = Core.tilesAroundAABB(ax, ay, monster.w, monster.h, tileSize)
         for ty = top, bottom do
             for tx = left, right do
-                if Core.isSolidTile(tx, ty, noiseScale, wallThreshold) then
+                if Core.isSolidTile(tx, ty) then
                     local tileX = tx * tileSize
                     local tileY = ty * tileSize
                     if Core.aabbOverlap(ax, ay, monster.w, monster.h, tileX, tileY, tileSize, tileSize) then
@@ -154,7 +155,7 @@ function Core.updateMonsterMovement(monster, dt, tileSize, noiseScale, wallThres
         local left, right, top, bottom = Core.tilesAroundAABB(ax, ay, monster.w, monster.h, tileSize)
         for ty = top, bottom do
             for tx = left, right do
-                if Core.isSolidTile(tx, ty, noiseScale, wallThreshold) then
+                if Core.isSolidTile(tx, ty) then
                     local tileX = tx * tileSize
                     local tileY = ty * tileSize
                     if Core.aabbOverlap(ax, ay, monster.w, monster.h, tileX, tileY, tileSize, tileSize) then
@@ -172,6 +173,23 @@ function Core.updateMonsterMovement(monster, dt, tileSize, noiseScale, wallThres
     end
 
     monster.vx, monster.vy = vx, vy
+end
+
+-- 查找一个安全的出生点（环形搜索最近的草地格子）
+function Core.findSpawnPoint(tileSize)
+    local radius = 0
+    while true do
+        for ty = -radius, radius do
+            for tx = -radius, radius do
+                if not Core.isSolidTile(tx, ty) then
+                    -- 返回像素坐标（格子中心点）
+                    return tx * tileSize + tileSize/2,
+                           ty * tileSize + tileSize/2
+                end
+            end
+        end
+        radius = radius + 1
+    end
 end
 
 return Core

@@ -2,14 +2,18 @@
 local Layout = require("layout")
 local Inventory = require("inventory")
 local ItemManager = require("ItemManager")
+local UIGrid = require("UIGrid")
 
 local InventoryUI = {}
-InventoryUI.selectedItemIndex = nil
-InventoryUI.actionMenu = nil
-InventoryUI.hoveredItemIndex = nil
 InventoryUI.previousScene = nil
 InventoryUI.onUseItem = nil
-local buttons = {
+
+-- 顶部标签页
+local tabs = {"人物状态", "背包", "任务", "商店"}
+InventoryUI.activeTab = 2 -- 默认背包
+
+-- 返回按钮
+InventoryUI.buttons = {
     {
         x = 200, y = 530, w = 200, h = 50,
         text = "返回游戏",
@@ -18,18 +22,67 @@ local buttons = {
         end
     }
 }
+-- 初始化格子布局
+UIGrid.config("inventory", {
+    cols = 5,
+    rows = 4,
+    slotSize = 64,
+    margin = 10,
+    startX = 100,
+    startY = 150
+})
+UIGrid.useConfig("inventory")
 
-function InventoryUI.draw()
-    if debugMode == true then
-        table.insert(buttons, {
-            x = 420, y = 530, w = 200, h = 50,
-            text = "图标浏览器",
-            onClick = function()
-                currentScene = "icon_browser"
-            end
-        })
+--------------------------------------------------
+-- 绘制单个物品格子
+--------------------------------------------------
+local function drawItemSlot(i, x, y, w, h, state)
+    local item = Inventory.items[i]
+    local sx, sy = Layout.toScreen(x, y)
+
+    -- 空格子绘制
+    if not item then
+        love.graphics.setColor(1, 1, 1, 0.3)
+        love.graphics.rectangle("line", sx, sy, w, h)
+        return
     end
+
+    local def = ItemManager.get(item.id)
+
+    -- 高亮选中
+    if UIGrid.selectedIndex == i then
+        love.graphics.setColor(0.8, 0.8, 0.2, 0.3)
+        love.graphics.rectangle("fill", sx, sy, w, h)
+    end
+
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.rectangle("line", sx, sy, w, h)
+
+    -- 绘制图标或名字
+    if def and def.icon then
+        def._image = def._image or love.graphics.newImage(def.icon)
+        local img = def._image
+        local iw, ih = img:getWidth(), img:getHeight()
+        local scale = math.min(48/iw, 48/ih)
+        local offsetX = (w - iw*scale)/2
+        local offsetY = (h - ih*scale)/2
+        love.graphics.draw(img, sx+offsetX, sy+offsetY, 0, scale, scale)
+    else
+        love.graphics.print(def and def.name or "未知物品", sx+5, sy+5)
+    end
+
+    -- 数量
+    love.graphics.print(item.count, sx+w-20, sy+h-20)
+end
+
+--------------------------------------------------
+-- 绘制函数
+--------------------------------------------------
+function InventoryUI.draw()
     local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
+
+    -- 确保使用背包的格子配置
+    UIGrid.useConfig("inventory")
 
     -- 半透明背景层
     love.graphics.setColor(0, 0, 0, 0.5)
@@ -42,99 +95,91 @@ function InventoryUI.draw()
     love.graphics.setColor(1, 1, 1)
     love.graphics.rectangle("line", winX, winY, winW, winH)
 
-    local slotSize = 64
-    local margin = 10
-    local startX, startY = 100, 100
+    -- 顶部标签页（人物状态 / 背包 / 任务 / 商店）
+    local tabX, tabY = 100, 100
+    for i, tab in ipairs({"人物状态", "背包", "任务", "商店"}) do
+        local w, h = 120, 30
+        local bx, by = Layout.toScreen(tabX + (i-1)*(w+10), tabY)
+        if InventoryUI.activeTab == i then
+            love.graphics.setColor(0.2, 0.8, 1)
+        else
+            love.graphics.setColor(1, 1, 1)
+        end
+        love.graphics.rectangle("line", bx, by, w, h)
+        love.graphics.printf(tab, bx, by+5, w, "center")
+    end
 
     -- 绘制物品格子
-    for i, item in ipairs(Inventory.items) do
-        local def = ItemManager.get(item.id)
-        local col = (i-1) % 5
-        local row = math.floor((i-1) / 5)
-        local vx = startX + col * (slotSize + margin)
-        local vy = startY + row * (slotSize + margin)
-        local x, y = Layout.toScreen(vx, vy)
-
-        -- 高亮选中格子
-        if InventoryUI.selectedItemIndex == i then
-            love.graphics.setColor(0.8, 0.8, 0.2, 0.3)
-            love.graphics.rectangle("fill", x, y, slotSize, slotSize)
-        end
-
-        love.graphics.setColor(1, 1, 1)
-        love.graphics.rectangle("line", x, y, slotSize, slotSize)
-
-        -- 绘制物品图标或名字
-        if def and def.icon then
-            def._image = def._image or love.graphics.newImage(def.icon)
-            local img = def._image
-            local iw, ih = img:getWidth(), img:getHeight()
-            local scale = math.min(48/iw, 48/ih)
-            local offsetX = (slotSize - iw*scale)/2
-            local offsetY = (slotSize - ih*scale)/2
-            love.graphics.draw(img, x+offsetX, y+offsetY, 0, scale, scale)
-        else
-            love.graphics.print(def and def.name or "未知物品", x+5, y+5)
-        end
-
-        -- 绘制数量
-        love.graphics.print(item.count, x+slotSize-20, y+slotSize-20)
-    end
+    UIGrid.drawAll(drawItemSlot, Inventory.items)
 
     -- 绘制操作菜单
-    if InventoryUI.actionMenu then
-        for i, opt in ipairs(InventoryUI.actionMenu.options) do
-            local bx, by = Layout.toScreen(
-                InventoryUI.actionMenu.x,
-                InventoryUI.actionMenu.y + (i-1)*InventoryUI.actionMenu.h
-            )
-            love.graphics.setColor(0.2, 0.2, 0.2)
-            love.graphics.rectangle("fill", bx, by, InventoryUI.actionMenu.w, InventoryUI.actionMenu.h)
-            love.graphics.setColor(1, 1, 1)
-            love.graphics.rectangle("line", bx, by, InventoryUI.actionMenu.w, InventoryUI.actionMenu.h)
-            love.graphics.printf(opt.text, bx, by+5, InventoryUI.actionMenu.w, "center")
-        end
-    end
+    UIGrid.drawActionMenu()
+
     -- 绘制描述框
-    if InventoryUI.hoveredItemIndex then
-        local item = Inventory.items[InventoryUI.hoveredItemIndex]
-        local def = ItemManager.get(item.id)
-        if def and def.description then
-            local mx, my = love.mouse.getPosition()
-            local text = def.description
-            local padding = 8
-            local font = love.graphics.getFont()
-            local w = font:getWidth(text) + padding*2
-            local h = font:getHeight() + padding*2
-
-            love.graphics.setColor(0, 0, 0, 0.7)
-            love.graphics.rectangle("fill", mx, my, w, h)
-            love.graphics.setColor(1, 1, 1)
-            love.graphics.rectangle("line", mx, my, w, h)
-            love.graphics.print(text, mx+padding, my+padding)
+    if UIGrid.hoveredIndex then
+        local item = Inventory.items[UIGrid.hoveredIndex]
+        if item then
+            local def = ItemManager.get(item.id)
+            if def and def.description then
+                UIGrid.drawTooltip(def.description)
+            end
         end
     end
 
-    -- 绘制返回按钮（带悬停高亮）
-    local hoveredIndex = Layout.mousemoved(love.mouse.getX(), love.mouse.getY(), buttons)
-    for i, btn in ipairs(buttons) do
+    -- 绘制滚动条
+    UIGrid.drawScrollbar(#Inventory.items)
+
+    -- 绘制拖动物品
+    UIGrid.drawDraggingItem(ItemManager)
+
+    -- 绘制按钮
+
+    -- 如果 debugMode 打开，确保按钮存在
+    if debugMode == true and not InventoryUI.debugButtonAdded then
+        table.insert(InventoryUI.buttons, {
+            x = 420, y = 530, w = 200, h = 50,
+            text = "图标浏览器",
+            onClick = function()
+                print("切换场景到 icon_browser")
+                currentScene = "icon_browser"
+            end
+        })
+        InventoryUI.debugButtonAdded = true
+    end
+
+    -- 绘制按钮
+    local hoveredIndex = Layout.mousemoved(love.mouse.getX(), love.mouse.getY(), InventoryUI.buttons)
+    for i, btn in ipairs(InventoryUI.buttons) do
         local bx, by = Layout.toScreen(btn.x, btn.y)
         local w, h = btn.w, btn.h
         if hoveredIndex == i then
-            love.graphics.setColor(0.2, 0.8, 1) -- 悬停高亮颜色
+            love.graphics.setColor(0.2, 0.8, 1)
         else
             love.graphics.setColor(1, 1, 1)
         end
         love.graphics.rectangle("line", bx, by, w, h)
         love.graphics.printf(btn.text, bx, by + (h - love.graphics.getFont():getHeight()) / 2, w, "center")
     end
-
     love.graphics.setColor(1, 1, 1)
+
+    if debugMode == false and InventoryUI.debugButtonAdded then
+        -- 移除最后一个按钮（图标浏览器）
+        table.remove(InventoryUI.buttons, #InventoryUI.buttons)
+        InventoryUI.debugButtonAdded = false
+        end
 end
 
+
+--------------------------------------------------
+-- 输入事件
+--------------------------------------------------
 function InventoryUI.keypressed(key)
     if key == "escape" then
         currentScene = InventoryUI.previousScene or "game"
+    elseif key == "pagedown" then
+        UIGrid.nextPage(#Inventory.items)
+    elseif key == "pageup" then
+        UIGrid.prevPage()
     end
 end
 
@@ -142,88 +187,77 @@ function InventoryUI.mousepressed(x, y, button)
     local vx, vy = Layout.toVirtual(x, y)
 
     -- 点击操作菜单
-    if InventoryUI.actionMenu then
-        for i, opt in ipairs(InventoryUI.actionMenu.options) do
-            local bx = InventoryUI.actionMenu.x
-            local by = InventoryUI.actionMenu.y + (i-1)*InventoryUI.actionMenu.h
-            if vx > bx and vx < bx+InventoryUI.actionMenu.w and vy > by and vy < by+InventoryUI.actionMenu.h then
-                opt.action()
-                InventoryUI.actionMenu = nil
-                return
-            end
-        end
-    end
+    if UIGrid.clickActionMenu(vx, vy) then return end
 
     -- 点击格子
-    local slotSize, margin, startX, startY = 64, 10, 100, 100
-    for i, item in ipairs(Inventory.items) do
-        local col = (i-1) % 5
-        local row = math.floor((i-1) / 5)
-        local gx = startX + col * (slotSize + margin)
-        local gy = startY + row * (slotSize + margin)
+    local index = UIGrid.getIndexAtPosition(vx, vy)
+    if index then
+        local item = Inventory.items[index]
+        if not item then return end
 
-        if vx > gx and vx < gx+slotSize and vy > gy and vy < gy+slotSize then
-            -- 如果再次点击同一个格子 → 取消选中
-            if InventoryUI.selectedItemIndex == i then
-                InventoryUI.selectedItemIndex = nil
-                InventoryUI.actionMenu = nil
+        if button == 1 then -- 左键
+            -- 如果点击的是当前选中的格子 → 取消选中
+            if UIGrid.selectedIndex == index then
+                UIGrid.selectedIndex = nil
+                UIGrid.hideActionMenu()
+                return
+            end
+
+            -- 否则正常选中或拖动
+            if love.keyboard.isDown("lshift") then
+                UIGrid.startDrag(index, item, x, y)
             else
-                InventoryUI.selectedItemIndex = i
-                -- 动态生成菜单
+                UIGrid.selectedIndex = index
                 local def = ItemManager.get(item.id)
                 local options = {}
                 if def.usable then
                     table.insert(options, {
-                    text="使用",
-                    action=function()
-                    Inventory:useItem(item.id, 1)
-                    if InventoryUI.onUseItem then
-                        InventoryUI.onUseItem(item)  -- 通知调用者
-                    end
-                    currentScene = InventoryUI.previousScene or "game"
-                end
+                        text="使用",
+                        action=function()
+                            Inventory:useItem(item.id, 1)
+                            if InventoryUI.onUseItem then InventoryUI.onUseItem(item) end
+                            currentScene = InventoryUI.previousScene or "game"
+                        end
                     })
                 end
-                if def.stackable and debugMode == true then
+                if def.stackable and debugMode then
                     table.insert(options, {text="添加", action=function() Inventory:addItem(item.id, 1) end})
                 end
                 if def.posable then
                     table.insert(options, {text="丢弃", action=function() Inventory:removeItem(item.id, 1) end})
                 end
-                InventoryUI.actionMenu = {
-                    x = gx + slotSize + 10,
-                    y = gy,
-                    w = 100,
-                    h = 30,
-                    options = options
-                }
+                UIGrid.showActionMenu(index, options)
             end
         end
     end
 
-    -- 返回按钮    
-    local result = Layout.mousepressed(x, y, button, buttons)
-    return result
+     -- 传递给 Layout.mousepressed，返回被点击的按钮索引
+    local clickedIndex = Layout.mousepressed(x, y, button, InventoryUIbuttons)
+    if clickedIndex then
+        local btn = buttons[clickedIndex]
+        if btn and btn.onClick then
+            btn.onClick() -- 执行按钮逻辑
+        end
+    end
+end
+
+function InventoryUI.mousereleased(x, y, button)
+    local vx, vy = Layout.toVirtual(x, y)
+    UIGrid.endDrag(vx, vy, Inventory.items)
 end
 
 function InventoryUI.mousemoved(x, y)
     local vx, vy = Layout.toVirtual(x, y)
-    InventoryUI.hoveredItemIndex = nil
-
-    local slotSize, margin, startX, startY = 64, 10, 100, 100
-    for i, item in ipairs(Inventory.items) do
-        local col = (i-1) % 5
-        local row = math.floor((i-1) / 5)
-        local gx = startX + col * (slotSize + margin)
-        local gy = startY + row * (slotSize + margin)
-
-        if vx > gx and vx < gx+slotSize and vy > gy and vy < gy+slotSize then
-            -- 如果该物品未被选中，才显示悬停提示
-            if InventoryUI.selectedItemIndex ~= i then
-                InventoryUI.hoveredItemIndex = i
-            end
-        end
+    local index = UIGrid.getIndexAtPosition(vx, vy)
+    if index and UIGrid.selectedIndex ~= index then
+        UIGrid.hoveredIndex = index
+    else
+        UIGrid.hoveredIndex = nil
     end
+end
+
+function InventoryUI.wheelmoved(x, y)
+    UIGrid.scroll(-y, #Inventory.items) -- 鼠标滚轮控制滚动
 end
 
 return InventoryUI

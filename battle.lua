@@ -1,8 +1,8 @@
--- battle.lua
 local Player = require("player")
 local Layout = require("layout")
 local Config = require("config")
 local InventoryUI = require("inventory_ui")
+local Monster = require("monster")
 
 local Battle = {}
 smallFont = love.graphics.newFont("assets/simhei.ttf",14)
@@ -18,18 +18,12 @@ Battle.state = {
     onResolve = nil
 }
 
-local buttons = {
-    {x=100, y=400, w=120, h=40, text="攻击", onClick=function() Battle.playerAttack() end},
-    {x=250, y=400, w=120, h=40, text="物品", onClick=function()  Battle.useItem() end},
-    {x=400, y=400, w=120, h=40, text="逃跑", onClick=function() currentScene = "game" end}
-}
-
-local selectedIndex = nil
-
-local function addLog(msg)
+-- 添加日志
+function Battle.addLog(msg)
     table.insert(Battle.state.log, {text = msg, time = love.timer.getTime()})
 end
 
+-- 战斗开始
 function Battle.start(enemyPayload, enemyIndex, onResolve)
     Battle.state.enemy = {
         name = enemyPayload.name,
@@ -44,7 +38,8 @@ function Battle.start(enemyPayload, enemyIndex, onResolve)
     currentScene = "battle"
 end
 
-local function resolveBattle(result)
+-- 战斗结束统一出口
+function Battle.resolveBattle(result)
     if Battle.state.onResolve then
         Battle.state.onResolve(result, Battle.state.enemyIndex)
     end
@@ -52,10 +47,11 @@ local function resolveBattle(result)
     currentScene = "game"
 end
 
+-- 玩家攻击
 function Battle.playerAttack()
     local dmg = (Player.data.level or 1) * 10
-    Battle.state.enemy.hp = Battle.state.enemy.hp - dmg
-    addLog("玩家攻击造成 " .. dmg .. " 点伤害！")
+    Battle.state.enemy.hp = math.max(Battle.state.enemy.hp - dmg, 0)
+    Battle.addLog("玩家攻击造成 " .. dmg .. " 点伤害！")
     Battle.state.turn = "enemy"
 end
 
@@ -63,28 +59,30 @@ end
 function Battle.useItem()
     InventoryUI.previousScene = "battle"
     InventoryUI.onUseItem = function(item)
-        addLog("使用了物品：" .. (item and item.name or "未知"))
+        Battle.addLog("使用了物品：" .. (item and item.name or "未知"))
         Battle.state.turn = "enemy"
     end
     currentScene = "inventory"
 end
 
+-- 敌人攻击
 function Battle.enemyTurn()
     if Battle.state.enemy.hp <= 0 then return end
     local dmg = (Battle.state.enemy.level or 1) * 8
-    Player.data.hp = (Player.data.hp or 0) - dmg
-    addLog(Battle.state.enemy.name .. " 攻击造成 " .. dmg .. " 点伤害！")
+    Player.data.hp = math.max((Player.data.hp or 0) - dmg, 0)
+    Battle.addLog(Battle.state.enemy.name .. " 攻击造成 " .. dmg .. " 点伤害！")
     Battle.state.turn = "player"
 end
 
-local function checkOutcome()
+-- 胜负判定
+function Battle.checkOutcome()
     if Battle.state.enemy.hp <= 0 then
-        addLog("你击败了 " .. Battle.state.enemy.name .. "！")
-        resolveBattle({ result = "win" })
+        Battle.addLog("你击败了 " .. Battle.state.enemy.name .. "！")
+        Battle.resolveBattle({ result = "win" })
     elseif (Player.data.hp or 0) <= 0 then
-        addLog("你被击败了……")
-        Config.setRespawn(0, 0)  -- 安全的默认坐标
-        currentScene = "title"
+        Battle.addLog("你被击败了……")
+        Config.setRespawn(0, 0)
+        Battle.resolveBattle({ result = "lose" })
     end
 end
 
@@ -92,7 +90,7 @@ end
 function Battle.update(dt)
     if Battle.state.turn == "enemy" then
         Battle.enemyTurn()
-        checkOutcome()
+        Battle.checkOutcome()
     end
 end
 
@@ -100,13 +98,13 @@ end
 function Battle.draw()
     local oldFont = love.graphics.getFont()
 
-    -- 绘制玩家状态条（左下角）
+    -- 玩家 HP/MP 条
     local barWidth, barHeight = 200, 20
     local margin = 20
     local x = margin
     local y = love.graphics.getHeight() - 100
 
-    -- HP 条
+    -- HP
     love.graphics.setColor(0.3,0.3,0.3)
     love.graphics.rectangle("fill", x, y, barWidth, barHeight)
     local hpRatio = (Player.data.hp or 0) / (Player.data.maxHp or 1)
@@ -115,7 +113,7 @@ function Battle.draw()
     love.graphics.setColor(1,1,1)
     love.graphics.print("HP: "..(Player.data.hp or 0).."/"..(Player.data.maxHp or 0), x, y)
 
-    -- MP 条
+    -- MP
     local mpY = y + barHeight + 5
     love.graphics.setColor(0.3,0.3,0.3)
     love.graphics.rectangle("fill", x, mpY, barWidth, barHeight)
@@ -125,7 +123,7 @@ function Battle.draw()
     love.graphics.setColor(1,1,1)
     love.graphics.print("MP: "..(Player.data.mp or 0).."/"..(Player.data.maxMp or 0), x, mpY)
 
-    -- 绘制敌人血量条（右上角）
+    -- 敌人 HP 条
     local ex = love.graphics.getWidth() - barWidth - margin
     local ey = margin
     love.graphics.setColor(0.3,0.3,0.3)
@@ -138,14 +136,14 @@ function Battle.draw()
         love.graphics.print(Battle.state.enemy.name.." HP: "..Battle.state.enemy.hp.."/"..Battle.state.enemy.maxHp, ex, ey)
     end
 
-    -- 绘制操作按钮和信息
+    -- 信息与按钮
     local infoLines = {
         "玩家等级: " .. (Player.data.level or 1),
         "敌人等级: " .. (Battle.state.enemy and Battle.state.enemy.level or 1),
     }
-    Layout.draw("战斗界面", infoLines, buttons, selectedIndex or -1, 0)
+    Layout.draw("战斗界面", infoLines, Battle.buttons, Battle.selectedIndex or -1, 0)
 
-    -- 绘制日志（右侧）
+    -- 日志
     love.graphics.setFont(smallFont)
     local now = love.timer.getTime()
     local screenW = love.graphics.getWidth()
@@ -172,18 +170,67 @@ function Battle.draw()
     love.graphics.setColor(1,1,1,1)
 end
 
+-- 按钮定义（放在 resolveBattle 之后）
+Battle.buttons = {
+    {x=100, y=400, w=120, h=40, text="攻击", onClick=function() Battle.playerAttack() end},
+    {x=250, y=400, w=120, h=40, text="物品", onClick=function() Battle.useItem() end},
+    {x=400, y=400, w=120, h=40, text="逃跑", onClick=function() Battle.resolveBattle({ result = "escape" }) end}
+}
+
+Battle.selectedIndex = nil
+
+-- 输入事件
 function Battle.mousepressed(x, y, button)
-    Layout.mousepressed(x, y, button, buttons)
+    Layout.mousepressed(x, y, button, Battle.buttons)
 end
 
 function Battle.mousemoved(x, y)
-    selectedIndex = Layout.mousemoved(x, y, buttons)
+    Battle.selectedIndex = Layout.mousemoved(x, y, Battle.buttons)
 end
 
 function Battle.keypressed(key)
     if key == "escape" then
-        currentScene = "game"
+        Battle.resolveBattle({ result = "escape" })
     end
+end
+
+-- === 整合 BattleManager 的入口 ===
+function Battle.enterBattle(i, monster)
+    if monster.cooldown and monster.cooldown > 0 then
+        print(monster.name .. " 还在冷却中，暂时不会进入战斗")
+        return
+    end
+
+    Battle.start(
+        { name = monster.name, level = monster.level, hp = monster.hp },
+        i,
+        function(outcome, enemyIndex)
+            if outcome.result == "win" then
+                table.remove(Monster.list, enemyIndex)
+                local expReward = monster.level * 50
+                local goldReward = monster.level * 10
+                Player.gainExp(expReward)
+                Player.addGold(goldReward)
+                print("获得经验：" .. expReward)
+                print("获得金币：" .. goldReward)
+
+            elseif outcome.result == "lose" then
+                Player.data.hp = 1
+                print("你被击败了，血量保留一滴")
+                monster.cooldown = monster.cooldownDuration or 5.0
+                print(monster.name .. " 进入冷却状态")
+                currentScene = "title"
+
+            elseif outcome.result == "escape" then
+                monster.cooldown = monster.cooldownDuration or 5.0
+                print(monster.name .. " 进入冷却状态")
+            end
+
+            if outcome.result ~= "lose" then
+                currentScene = "game"
+            end
+        end
+    )
 end
 
 return Battle

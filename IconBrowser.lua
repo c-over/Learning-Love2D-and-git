@@ -1,97 +1,75 @@
 -- IconBrowser.lua
 local IconBrowser = {}
 local ItemManager = require("ItemManager")
+local UIGrid = require("UIGrid")
+local Layout = require("layout")
 
-local ICON = 64
-local PADDING = 8
-local COLS = 10
-local scrollY = 0
-local maxScroll = 0
+local ids = {}
 local hoveredId = nil
 
 function IconBrowser.load()
-    local ids = ItemManager.getAllIds()
-    local totalItems = #ids
-    local totalRows = math.ceil(totalItems / COLS)
-    -- 20 顶部留白，底部不强制留白
-    maxScroll = math.max(0, totalRows * (ICON + PADDING) - love.graphics.getHeight() + 20)
+    ids = ItemManager.getAllIds()
+
+    -- 注册 IconBrowser 的格子配置（不在这里激活）
+    UIGrid.config("icon_browser", {
+        cols = 10, rows = 6,
+        slotSize = 64, margin = 8,
+        startX = 20, startY = 20
+    })
 end
 
 function IconBrowser.wheelmoved(_, y)
-    scrollY = scrollY - y * 30
-    scrollY = math.max(0, math.min(scrollY, maxScroll))
+    UIGrid.scroll(-y * 3, #ids)
 end
 
 function IconBrowser.mousemoved(mx, my)
     hoveredId = nil
+    local vx, vy = Layout.toVirtual(mx, my)
+    local localIndex = UIGrid.getIndexAtPosition(vx, vy)
+    if not localIndex then return end
 
-    local startX = 20
-    local startY = 20 - scrollY
-    local ids = ItemManager.getAllIds()
+    local startIndex = (UIGrid.page - 1) * UIGrid.itemsPerPage + 1 + UIGrid.scrollOffset
+    local absoluteIndex = startIndex + (localIndex - 1)
+    if ids[absoluteIndex] then
+        hoveredId = ids[absoluteIndex]
+    end
+end
 
-    -- 用“有序 ids 数组”遍历，保证格子布局与 draw 一致
-    for i = 1, #ids do
-        local id = ids[i]
-        local col = (i - 1) % COLS
-        local row = math.floor((i - 1) / COLS)
-        local gx = startX + col * (ICON + PADDING)
-        local gy = startY + row * (ICON + PADDING)
+local function drawIconSlot(absoluteIndex, x, y, w, h)
+    local id = ids[absoluteIndex]
+    if not id then return end
 
-        if mx > gx and mx < gx + ICON and my > gy and my < gy + ICON then
-            hoveredId = id
-            break
-        end
+    local sx, sy = Layout.toScreen(x, y)
+    local img, quad, scale = ItemManager.getIcon(id)
+    if not img then return end
+
+    if quad then
+        love.graphics.draw(img, quad, sx, sy)
+    else
+        local iw, ih = img:getWidth(), img:getHeight()
+        local offsetX = (w - iw * scale) / 2
+        local offsetY = (h - ih * scale) / 2
+        love.graphics.draw(img, sx + offsetX, sy + offsetY, 0, scale, scale)
     end
 end
 
 function IconBrowser.update()
-    -- 留作扩展
 end
 
 function IconBrowser.draw(currentScene, targetScene)
-    if currentScene ~= targetScene then return end
+    if currentScene ~= "icon_browser" then return end
+    UIGrid.useConfig("icon_browser")
 
-    local startX = 20
-    local startY = 20 - scrollY
-    local ids = ItemManager.getAllIds()
+    UIGrid.selectedIndex = nil
+    UIGrid.hideActionMenu()
 
-    for i = 1, #ids do
-        local id = ids[i]
-        local col = (i - 1) % COLS
-        local row = math.floor((i - 1) / COLS)
-        local x = startX + col * (ICON + PADDING)
-        local y = startY + row * (ICON + PADDING)
+    UIGrid.drawAll(drawIconSlot, ids)
+    UIGrid.drawScrollbar(#ids)
 
-        local img, quad, scale = ItemManager.getIcon(id)
-        if img then
-            if quad then
-                love.graphics.draw(img, quad, x, y)
-            else
-                local iw, ih = img:getWidth(), img:getHeight()
-                local offsetX = (ICON - iw * scale) / 2
-                local offsetY = (ICON - ih * scale) / 2
-                love.graphics.draw(img, x + offsetX, y + offsetY, 0, scale, scale)
-            end
-        end
-    end
-
-    -- 悬停提示
     if hoveredId then
         local def = ItemManager.get(hoveredId)
-        if def then
-            local mx, my = love.mouse.getPosition()
-            local text = def.name or ("ID " .. tostring(hoveredId))
-            local pad = 8
-            local font = love.graphics.getFont()
-            local w = font:getWidth(text) + pad * 2
-            local h = font:getHeight() + pad * 2
-
-            love.graphics.setColor(0, 0, 0, 0.7)
-            love.graphics.rectangle("fill", mx, my, w, h)
-            love.graphics.setColor(1, 1, 1, 1)
-            love.graphics.rectangle("line", mx, my, w, h)
-            love.graphics.print(text, mx + pad, my + pad)
-        end
+        local text = (def and def.name) or ("ID " .. tostring(hoveredId))
+        UIGrid.drawTooltip(text)
     end
 end
 
