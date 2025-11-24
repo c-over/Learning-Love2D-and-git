@@ -25,9 +25,9 @@ function love.load()
     Settings.init(bgMusic)
 
     debugMode = false  -- 初始关闭
+    Player.load()   -- 从存档读取数据
     Inventory.load()
     Game.load()
-    Player.load()   -- 从存档读取数据
 
     currentScene = "title"
     Title.load()
@@ -133,6 +133,13 @@ function love.mousemoved(x, y, dx, dy, istouch)
         IconBrowser.mousemoved(x, y)
     elseif currentScene == "shop" then
         ShopUI.mousemoved(x, y)
+    end
+end
+
+function love.mousereleased(x, y, button)
+    -- 转发给 InventoryUI
+    if currentScene == "inventory" then
+        InventoryUI.mousereleased(x, y, button)
     end
 end
 

@@ -37,6 +37,7 @@ function UIGrid.config(name, opts)
     UIGrid.activeConfig = cfg
     UIGrid.slotStates = {}
     UIGrid.itemsPerPage = cfg.cols * cfg.rows
+    return cfg
 end
 
 function UIGrid.useConfig(name)
@@ -113,23 +114,71 @@ end
 function UIGrid.getSlotState(index)
     return UIGrid.slotStates[index]
 end
-
 --------------------------------------------------
 -- 批量绘制
 --------------------------------------------------
-function UIGrid.drawAll(drawFunc, items)
+function UIGrid.drawAll(drawFunc, items, hoveredSlotIndex)
     local c = cfg()
-    local startIndex = (UIGrid.page-1) * UIGrid.itemsPerPage + 1 + UIGrid.scrollOffset
-    local endIndex = math.min(startIndex + UIGrid.itemsPerPage - 1, #items)
+    local baseIndex = (UIGrid.page-1) * UIGrid.itemsPerPage + 1 + UIGrid.scrollOffset
+    local endIndex = math.min(baseIndex + UIGrid.itemsPerPage - 1, #items)
 
+    -- 1. 绘制所有格子的背景 (使用屏幕坐标)
+    for i = 1, c.cols * c.rows do
+        local x, y, w, h = UIGrid.getSlotRect(i)
+        -- 关键修复：将虚拟坐标转换为屏幕坐标
+        local sx, sy = Layout.toScreen(x, y)
+        local sw, sh = Layout.toScreen(w, h)
+
+        love.graphics.setColor(0.1, 0.1, 0.1, 0.8)
+        love.graphics.rectangle("fill", sx, sy, sw, sh)
+        love.graphics.setColor(0.5, 0.5, 0.5, 0.8)
+        love.graphics.rectangle("line", sx, sy, sw, sh)
+    end
+
+    -- 2. 循环绘制物品和高亮效果
     local slotIndex = 1
-    for i = startIndex, endIndex do
+    for i = baseIndex, endIndex do
         local x, y, w, h = UIGrid.getSlotRect(slotIndex)
-        drawFunc(i, x, y, w, h, UIGrid.getSlotState(slotIndex))
+
+        -- 关键修复：将虚拟坐标转换为屏幕坐标
+        local sx, sy = Layout.toScreen(x, y)
+        local sw, sh = Layout.toScreen(w, h)
+
+        -- 检查当前格子是否是拖动源
+        local isDragSource = (UIGrid.draggingItem and UIGrid.draggingItem.visualIndex == slotIndex)
+
+        -- 如果不是拖动源，则正常绘制
+        if not isDragSource then
+            -- 准备一个状态表，用于传递给 drawFunc
+            local state = {}
+
+            -- 检查是否被选中
+            if UIGrid.selectedIndex == slotIndex then
+                state.selected = true
+            end
+            
+            -- 检查是否是拖动目标
+            if UIGrid.draggingItem then
+                local mx, my = love.mouse.getPosition()
+                local vx, vy = Layout.toVirtual(mx, my)
+                local targetSlot = UIGrid.getIndexAtPosition(vx, vy)
+                if targetSlot == slotIndex then
+                    state.dragTarget = true
+                end
+            end
+
+            -- 检查鼠标是否悬停在此格子上
+            if hoveredSlotIndex == slotIndex then
+                state.hovered = true
+            end
+
+            -- 调用绘制函数，传递屏幕坐标
+            drawFunc(i, sx, sy, sw, sh, state)
+        end
+
         slotIndex = slotIndex + 1
     end
 end
-
 --------------------------------------------------
 -- 操作菜单
 --------------------------------------------------
@@ -147,20 +196,35 @@ end
 
 function UIGrid.hideActionMenu()
     UIGrid.actionMenu = nil
+    UIGrid.selectedIndex = nil
 end
 
 function UIGrid.drawActionMenu()
     if not UIGrid.actionMenu then return end
-    for i,opt in ipairs(UIGrid.actionMenu.options) do
-        local bx, by = Layout.toScreen(
-            UIGrid.actionMenu.x,
-            UIGrid.actionMenu.y + (i-1)*UIGrid.actionMenu.h
-        )
-        love.graphics.setColor(0.2,0.2,0.2)
-        love.graphics.rectangle("fill", bx, by, UIGrid.actionMenu.w, UIGrid.actionMenu.h)
-        love.graphics.setColor(1,1,1)
-        love.graphics.rectangle("line", bx, by, UIGrid.actionMenu.w, UIGrid.actionMenu.h)
-        love.graphics.printf(opt.text, bx, by+5, UIGrid.actionMenu.w, "center")
+
+    -- 获取菜单的虚拟位置和尺寸
+    local menuVx = UIGrid.actionMenu.x
+    local menuVy = UIGrid.actionMenu.y
+    local menuVw = UIGrid.actionMenu.w
+    local menuVh = UIGrid.actionMenu.h
+
+    for i, opt in ipairs(UIGrid.actionMenu.options) do
+        -- 计算每个菜单项的虚拟位置和尺寸
+        local itemVx = menuVx
+        local itemVy = menuVy + (i - 1) * menuVh
+        local itemVw = menuVw
+        local itemVh = menuVh
+
+        -- 关键修复：将虚拟坐标和尺寸都转换为屏幕坐标
+        local sx, sy = Layout.toScreen(itemVx, itemVy)
+        local sw, sh = Layout.toScreen(itemVw, itemVh)
+
+        -- 使用屏幕坐标进行绘制
+        love.graphics.setColor(0.2, 0.2, 0.2)
+        love.graphics.rectangle("fill", sx, sy, sw, sh)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.rectangle("line", sx, sy, sw, sh)
+        love.graphics.printf(opt.text, sx, sy + 5, sw, "center")
     end
 end
 
@@ -182,50 +246,155 @@ end
 -- 描述框
 --------------------------------------------------
 function UIGrid.drawTooltip(text)
-    if not text then return end
-    local mx,my = love.mouse.getPosition()
+    -- 1. 如果没有文本，或者正在拖动物品，则不显示
+    if not text or UIGrid.draggingItem then
+        return
+    end
+
+    local mx, my = love.mouse.getPosition()
     local padding = 8
     local font = love.graphics.getFont()
-    local w = font:getWidth(text) + padding*2
-    local h = font:getHeight() + padding*2
-    love.graphics.setColor(0,0,0,0.7)
-    love.graphics.rectangle("fill", mx, my, w, h)
-    love.graphics.setColor(1,1,1)
-    love.graphics.rectangle("line", mx, my, w, h)
-    love.graphics.print(text, mx+padding, my+padding)
+    local textW = font:getWidth(text)
+    local textH = font:getHeight()
+    
+    local w = textW + padding * 2
+    local h = textH + padding * 2
+
+    -- 2. 设置提示框的初始位置为鼠标右下方
+    local offset = 15 -- 鼠标与提示框的间距
+    local x = mx + offset
+    local y = my + offset
+
+    -- 3. 边界检测：如果超出屏幕，则移动到鼠标左上方
+    local screenW, screenH = love.graphics.getWidth(), love.graphics.getHeight()
+    if x + w > screenW then
+        x = mx - w - offset
+    end
+    if y + h > screenH then
+        y = my - h - offset
+    end
+
+    -- 4. 绘制提示框
+    love.graphics.setColor(0, 0, 0, 0.7)
+    love.graphics.rectangle("fill", x, y, w, h)
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.rectangle("line", x, y, w, h)
+    love.graphics.print(text, x + padding, y + padding)
+end
+--------------------------------------------------
+-- 拖动
+--------------------------------------------------
+UIGrid.autoSortAfterDrag = false -- 默认为关闭状态
+
+function UIGrid.startDrag(visualIndex, item, items)
+    -- 计算当前视图的第一个物品在 items 数组中的索引
+    local baseIndex = (UIGrid.page - 1) * UIGrid.itemsPerPage + 1 + UIGrid.scrollOffset
+    -- 视觉槽位 visualIndex 对应的实际数组索引
+    local actualIndex = baseIndex + visualIndex - 1
+
+    -- 记录被拖动物品的信息
+    UIGrid.draggingItem = {
+        visualIndex = visualIndex,      -- 保存视觉槽位索引，用于绘制高亮等
+        actualIndex = actualIndex, -- 保存实际数组索引，用于交换
+        item = item
+    }
+end
+
+function UIGrid.endDrag(vx, vy, items)
+    if not UIGrid.draggingItem then return end
+
+    local sourceActualIndex = UIGrid.draggingItem.actualIndex
+    local targetVisualIndex = UIGrid.getIndexAtPosition(vx, vy)
+
+    if targetVisualIndex then
+        -- 计算目标位置的实际数组索引
+        local baseIndex = (UIGrid.page - 1) * UIGrid.itemsPerPage + 1 + UIGrid.scrollOffset
+        local targetActualIndex = baseIndex + targetVisualIndex - 1
+
+        -- 确保目标索引在有效范围内
+        if targetActualIndex > 0 and targetActualIndex <= #items and sourceActualIndex ~= targetActualIndex then
+            -- 交换物品
+            local tmp = items[targetActualIndex]
+            items[targetActualIndex] = UIGrid.draggingItem.item
+            items[sourceActualIndex] = tmp
+
+            -- 如果开启了自动排序，则在拖放后对物品列表进行排序
+            if UIGrid.autoSortAfterDrag then
+                UIGrid.autoSort(items)
+                -- 排序后重置视图，以防当前页为空或物品位置错乱
+                UIGrid.page = 1
+                UIGrid.scrollOffset = 0
+            end
+        end
+    end
+
+    -- 清理拖动状态
+    UIGrid.draggingItem = nil
+end
+
+function UIGrid.autoSort(items)
+    table.sort(items, function(a, b)
+        if not a and not b then return false end
+        if not a then return true end
+        if not b then return false end
+
+        local defA = ItemManager.get(a.id)
+        local defB = ItemManager.get(b.id)
+
+        local nameA = defA and defA.name or ""
+        local nameB = defB and defB.name or ""
+        return nameA < nameB
+    end)
 end
 
 --------------------------------------------------
 -- 拖动
 --------------------------------------------------
-function UIGrid.startDrag(index, item, mx, my)
-    UIGrid.draggingItem = {index=index, item=item, offsetX=mx, offsetY=my}
-end
-
-function UIGrid.endDrag(vx, vy, items)
-    if not UIGrid.draggingItem then return end
-    local targetIndex = UIGrid.getIndexAtPosition(vx, vy)
-    if targetIndex and targetIndex ~= UIGrid.draggingItem.index then
-        local tmp = items[targetIndex]
-        items[targetIndex] = UIGrid.draggingItem.item
-        items[UIGrid.draggingItem.index] = tmp
-    end
-    UIGrid.draggingItem = nil
-end
-
 function UIGrid.drawDraggingItem(ItemManager)
     if not UIGrid.draggingItem then return end
-    local mx, my = love.mouse.getPosition()
-    local def = ItemManager.get(UIGrid.draggingItem.item.id)
-    if def and def.icon then
-        def._image = def._image or love.graphics.newImage(def.icon)
-        local img = def._image
-        love.graphics.setColor(1,1,1,0.7)
-        love.graphics.draw(img, mx-24, my-24, 0, 0.75, 0.75)
+
+    local mx, my = love.mouse.getPosition() -- 鼠标位置已经是屏幕坐标
+    local item = UIGrid.draggingItem.item
+
+    -- 关键修复：使用 ItemManager.getIcon 来统一获取图标
+    local iconImage, iconQuad = ItemManager.getIcon(item.id)
+
+    if iconImage then
+        love.graphics.setColor(1, 1, 1, 0.7) -- 设置半透明效果
+
+        local scale, offsetX, offsetY
+
+        if iconQuad then
+            -- 如果有 iconQuad，说明是图标集
+            local _, _, iconW, iconH = iconQuad:getViewport()
+            -- 定义拖动图标的固定大小，例如 64x64
+            local DRAG_ICON_SIZE = 64 
+            scale = math.min(DRAG_ICON_SIZE / iconW, DRAG_ICON_SIZE / iconH)
+            offsetX = (DRAG_ICON_SIZE - iconW * scale) / 2
+            offsetY = (DRAG_ICON_SIZE - iconH * scale) / 2
+        else
+            -- 如果没有 iconQuad，说明是单个图标文件
+            local imgW, imgH = iconImage:getWidth(), iconImage:getHeight()
+            local DRAG_ICON_SIZE = 64
+            scale = math.min(DRAG_ICON_SIZE / imgW, DRAG_ICON_SIZE / imgH)
+            offsetX = (DRAG_ICON_SIZE - imgW * scale) / 2
+            offsetY = (DRAG_ICON_SIZE - imgH * scale) / 2
+        end
+        
+        -- 关键修复：根据 iconQuad 是否存在来决定如何调用 love.graphics.draw
+        if iconQuad then
+            love.graphics.draw(iconImage, iconQuad, mx - offsetX, my - offsetY, 0, scale, scale)
+        else
+            love.graphics.draw(iconImage, mx - offsetX, my - offsetY, 0, scale, scale)
+        end
     else
-        love.graphics.setColor(1,1,1,0.7)
+        -- 如果图标不存在，则显示物品名称
+        local def = ItemManager.get(item.id)
+        love.graphics.setColor(1, 1, 1, 0.7)
         love.graphics.print(def and def.name or "未知物品", mx, my)
     end
-end
 
+    -- 恢复颜色设置，避免影响后续绘制
+    love.graphics.setColor(1, 1, 1, 1)
+end
 return UIGrid

@@ -89,4 +89,27 @@ function ItemManager.getIcon(id)
     return nil
 end
 
+-- 新增：获取物品类别
+function ItemManager.getCategory(id)
+    local def = ItemManager.get(id)
+    if not def then
+        return "material" -- 默认类别
+    end
+    return def.category or "material" -- 默认类别
+end
+
+function ItemManager.use(id, player)
+    local def = ItemManager.get(id)
+    if not def then
+        return false, "物品不存在: " .. tostring(id)
+    end
+
+    if type(def.onUse) == "function" then
+        def.onUse(player)
+        return true
+    else
+        return false, "物品不可使用: " .. tostring(id)
+    end
+end
+
 return ItemManager
