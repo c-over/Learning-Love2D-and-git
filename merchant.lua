@@ -7,9 +7,9 @@ Merchant.list = {
         x = 64, y = 32, w = 32, h = 32,
         name = "商人",
         items = {
-            {id=1, price=50}, -- 药水
-            {id=2, price=120}, -- 魔力药水
-            {id=3, price=200}  -- 武器
+            {id=1, price=50}, -- 经验药水
+            {id=2, price=120}, -- 大经验药水
+            {id=3, price=200}  -- 生命药水
         }
     }
 }

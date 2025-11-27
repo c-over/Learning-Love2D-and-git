@@ -34,6 +34,8 @@ local function parseOnUse(def)
         return function(player) player.addLevel(value) end
     elseif action == "addHP" then
         return function(player) player.addHP(value) end
+    elseif action == "addMP" then
+        return function(player) player.addMP(value) end
     end
     return nil
 end

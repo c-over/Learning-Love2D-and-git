@@ -92,6 +92,12 @@ function Player.addHP(amount)
     Player.save()
 end
 
+function Player.addMP(amount)
+    initDefaults()
+    Player.data.mp = math.min(Player.data.mp + (amount or 10), Player.data.maxMp)
+    Player.save()
+end
+
 function Player.gainExp(amount)
     initDefaults()
     Player.data.exp = Player.data.exp + (amount or 10)

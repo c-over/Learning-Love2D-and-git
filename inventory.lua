@@ -29,7 +29,7 @@ function Inventory.load()
             key_item = {}
         }
         -- 添加初始物品
-        -- Inventory:addItem(1, 3, "potion")
+        Inventory:addItem(1, 3, "potion")
         Inventory:addItem(2, 1, "potion")
         Inventory:addItem(3, 5, "potion")
         Inventory:addItem(4, 1, "material")
@@ -115,7 +115,7 @@ function Inventory:useItem(id, amount, category)
     self:removeItem(id, amount or 1, category)
 end
 
--- 新增：获取指定类别的所有物品 (已修正)
+-- 获取指定类别的所有物品
 function Inventory.getItemsByCategory(category)
     -- 使用模块表名 Inventory 而不是 self
     return Inventory.items[category] or {}

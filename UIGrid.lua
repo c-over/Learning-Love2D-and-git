@@ -41,8 +41,29 @@ function UIGrid.config(name, opts)
 end
 
 function UIGrid.useConfig(name)
-    UIGrid.activeConfig = UIGrid.configs[name]
+    -- 尝试获取配置
+    local cfg = UIGrid.configs[name]
+    
+    -- 如果找不到指定配置，尝试回退到 "default"
+    if not cfg then
+        cfg = UIGrid.configs["default"]
+    end
+
+    -- 如果连默认配置都没有，为了防止崩溃，现场创建一个临时配置
+    if not cfg then
+        print("Warning: UIGrid config '" .. tostring(name) .. "' not found and no default config. Using fallback.")
+        cfg = {
+            cols = 5, rows = 4, slotSize = 64, margin = 10, 
+            startX = 100, startY = 100, scale = 1
+        }
+        -- 将其存入 configs 避免下次再报警
+        UIGrid.configs[name or "default"] = cfg
+    end
+
+    UIGrid.activeConfig = cfg
     UIGrid.slotStates = {}
+    
+    -- 现在 activeConfig 肯定不为空了，可以安全计算
     UIGrid.itemsPerPage = UIGrid.activeConfig.cols * UIGrid.activeConfig.rows
 end
 
@@ -188,7 +209,7 @@ function UIGrid.showActionMenu(index, options)
         x = x + w + 10,
         y = y,
         w = 100,
-        h = 30,
+        h = 35,
         options = options
     }
     UIGrid.selectedIndex = index

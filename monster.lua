@@ -1,12 +1,47 @@
 local EntitySpawner = require("EntitySpawner")
 local Core = require("core")
 
+-- === 1. 定义状态机状态 ===
+local STATES = {
+    IDLE     = "idle",
+    CHASE    = "chase",
+    COOLDOWN = "cooldown"
+}
+
 -- 怪物模板
 local monsterTypes = {
-    {name="史莱姆", level=1, hp=200, color={0.6,0.6,1}, speed=1},
-    {name="哥布林", level=2, hp=80,  color={0,0.8,0.2}, speed=2},
-    {name="蝙蝠",   level=3, hp=60,  color={0,0.2,0.8}, speed=5}
+    {name="史莱姆", level=1, hp=50, color={0.6,0.6,1}, speed=30, range=100}, 
+    {name="哥布林", level=2, hp=80, color={0,0.8,0.2}, speed=50, range=150},
+    {name="蝙蝠",   level=3, hp=40, color={0,0.2,0.8}, speed=80, range=200}
 }
+
+-- 辅助函数：随机游荡逻辑
+local function updateIdleMovement(monster, dt, Core)
+    monster.stateTimer = monster.stateTimer - dt
+    if monster.stateTimer <= 0 then
+        monster.stateTimer = love.math.random(1, 3)
+        if love.math.random() > 0.5 then
+            monster.wanderDir = love.math.random() * math.pi * 2
+        else
+            monster.wanderDir = nil
+        end
+    end
+
+    if monster.wanderDir then
+        local dx = math.cos(monster.wanderDir) * monster.speed * 0.5 * dt
+        local dy = math.sin(monster.wanderDir) * monster.speed * 0.5 * dt
+        
+        -- 简单防撞
+        local tx = math.floor((monster.x + dx + 16)/32) -- +16取中心点
+        local ty = math.floor((monster.y + dy + 16)/32)
+        if not Core.isSolidTile(tx, ty) then
+            monster.x = monster.x + dx
+            monster.y = monster.y + dy
+        else
+            monster.wanderDir = monster.wanderDir + math.pi 
+        end
+    end
+end
 
 -- 生成怪物对象
 local function spawnMonster(tx, ty, tileSize)
@@ -20,52 +55,103 @@ local function spawnMonster(tx, ty, tileSize)
         level = mType.level,
         hp    = mType.hp,
         speed = mType.speed,
-        cooldown = 0,             -- 当前冷却剩余时间
-        cooldownDuration = 5.0    -- 默认冷却时长，可按怪物类型调整
+        state = STATES.IDLE,
+        detectionRange = mType.range,
+        cooldown = 0,
+        cooldownDuration = 5.0,
+        stateTimer = 0,
+        wanderDir = nil
     }
 end
 
--- 配置怪物生成器
+-- === 配置怪物生成器 ===
 local Monster = EntitySpawner.new({
-    radius        = 20,   -- 玩家周围多少格(tile)范围内尝试生成怪物，半径为10表示21x21区域
-    maxNearby     = 15,    -- 限制玩家附近同时存在的怪物数量，超过则不再生成
-    noSpawnRange  = 600,   -- 玩家周围的安全区半径(像素)，在此范围内不会生成怪物
-    density       = 0.01, -- 每个候选格子生成怪物的概率，值越大怪物越密集
-    spawnInterval = 1.0,    -- 怪物生成的时间间隔(秒)，每隔2秒尝试一次生成
-    maxDistance   = 40,   -- 怪物离玩家超过多少格(tile)时会被清理，避免远处怪物占用资源
+    -- [关键修改 1] 扩大最大生成半径
+    -- 假设 tileSize=32，30格 = 960像素。这保证了生成范围足够大，包裹住 noSpawnRange
+    radius        = 30,
 
-    -- 使用 Core.isSolidTile 判定是否为不可进入的方块(树、石头、水等)，避免怪物生成在障碍物里
+    -- [关键修改 2] 屏幕安全距离
+    -- 假设屏幕宽800，一半是400。设为450保证在屏幕外生成。
+    -- 现在的有效生成区域是：距离玩家 450像素 到 960像素 之间的圆环区域。
+    noSpawnRange  = 450,
+    
+    -- [关键修改 3] 提高密度概率
+    -- 新算法中尝试次数少，需要提高单次成功率。
+    -- 0.1 * 10 = 1.0 (100%)。这意味着只要位置合法（不是墙，不在屏幕内），就一定会生成。
+    density       = 0.12, 
+
+    -- [关键修改 4] 加快尝试频率
+    -- 每 0.1 秒尝试生成一次。之前是 1.0 秒太慢了。
+    spawnInterval = 0.1,
+
+    maxNearby     = 10,   -- 屏幕周围最大怪物数
+    maxDistance   = 45,   -- 离多远删除 (要比 radius 大，防止刚生成就删除)
+
     isSolid = function(tx, ty)
         return Core.isSolidTile(tx, ty)
     end,
 
-    -- 定义具体的怪物生成函数，负责创建怪物对象(位置、大小、属性等)
     spawnFunc = spawnMonster,
 
     updateFunc = function(monster, dt, player, tileSize, Core)
-        if monster.cooldown and monster.cooldown > 0 then
-            monster.cooldown = math.max(monster.cooldown - dt, 0)
-        end
-        Core.updateMonsterMovement(monster, dt, tileSize, player)
-    end,
-    drawFunc = function(monster, camX, camY)
-        local isCooling = monster.cooldown and monster.cooldown > 0
-        if isCooling then
-            -- 闪烁：每 0.3 秒切换一次可见性
-            local t = love.timer.getTime()
-            local blink = math.floor(t * 3) % 2 == 0
-            if blink then
-                love.graphics.setColor(monster.color[1], monster.color[2], monster.color[3], 0.3) -- 半透明
-            else
-                love.graphics.setColor(monster.color[1], monster.color[2], monster.color[3], 1.0) -- 正常
+        local target = player.data or player
+        if not target or not target.x or not target.y then return end
+
+        local distSq = (monster.x - target.x)^2 + (monster.y - target.y)^2
+        local dist = math.sqrt(distSq)
+
+        if monster.state == STATES.COOLDOWN then
+            monster.cooldown = monster.cooldown - dt
+            if monster.cooldown <= 0 then
+                monster.cooldown = 0
+                monster.state = STATES.IDLE
             end
+
+        elseif monster.state == STATES.CHASE then
+            if dist > monster.detectionRange * 1.5 then
+                monster.state = STATES.IDLE
+                monster.stateTimer = 0
+            else
+                Core.updateMonsterMovement(monster, dt, tileSize, player) 
+            end
+
+        elseif monster.state == STATES.IDLE then
+            if dist < monster.detectionRange then
+                monster.state = STATES.CHASE
+            else
+                updateIdleMovement(monster, dt, Core)
+            end
+        end
+        
+        if monster.cooldown > 0 and monster.state ~= STATES.COOLDOWN then
+            monster.state = STATES.COOLDOWN
+        end
+    end,
+
+    drawFunc = function(monster, camX, camY)
+        local x, y = monster.x - camX, monster.y - camY
+        
+        if monster.state == STATES.COOLDOWN then
+            local t = love.timer.getTime()
+            local alpha = (math.floor(t * 5) % 2 == 0) and 0.3 or 0.8
+            love.graphics.setColor(monster.color[1], monster.color[2], monster.color[3], alpha)
+        elseif monster.state == STATES.CHASE then
+            love.graphics.setColor(1, 0, 0, 1)
         else
             love.graphics.setColor(monster.color)
         end
 
-        love.graphics.rectangle("fill", monster.x - camX, monster.y - camY, monster.w, monster.h)
+        love.graphics.rectangle("fill", x, y, monster.w, monster.h)
+        
         love.graphics.setColor(1,1,1)
-        love.graphics.print(monster.name, monster.x - camX, monster.y - camY - 20)
+        love.graphics.print(monster.name, x, y - 20)
+        
+        if monster.state == STATES.CHASE then
+            love.graphics.print("!", x + 10, y - 35)
+        elseif monster.state == STATES.COOLDOWN then
+            local timeLeft = string.format("%.1f", monster.cooldown)
+            love.graphics.print(timeLeft, x + 5, y - 35)
+        end
     end
 })
 
