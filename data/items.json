@@ -1,45 +1,149 @@
-  {
+{  
+  "0": {
+    "name": "未知物品",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 13,
+    "description": "问号，占位测试用",
+    "category": "material",
+    "usable": false,
+    "stackable": false,
+    "posable": true
+  },
   "1": {
-    "name": "经验药水",
-    "icon": "assets/potion_new.png",
-    "description": "使用后提升1级",
-    "usable": true,
-    "stackable": true,
-    "posable": true,
-    "onUse": "addLevel:1"
-  },
-  "2": {
-    "name": "大经验药水",
-    "icon": "assets/big_potion_new.png",
-    "description": "使用后提升3级",
-    "usable": true,
-    "stackable": true,
-    "posable": true,
-    "onUse": "addLevel:3"
-  },
-  "3": {
     "name": "治疗药水",
-    "icon": "assets/Hi_potion.png",
+    "icon": "assets/potion_new.png",
     "description": "恢复50点生命值",
+    "category": "potion",
     "usable": true,
     "stackable": true,
     "posable": true,
     "onUse": "addHP:50"
   },
-  "4": {
-    "name": "未知物品",
-    "iconSheet": "assets/icon.png",
-    "iconIndex": 13,
-    "description": "问号，占位用",
-    "usable": false,
+  "2": {
+    "name": "魔力药水",
+    "icon": "assets/Hi_potion.png",
+    "description": "恢复50点魔力值",
+    "category": "potion",
+    "usable": true,
     "stackable": true,
-    "posable": true
+    "posable": true,
+    "onUse": "addMP:50"
+  },
+  "3": {
+    "name": "经验药水",
+    "icon": "assets/big_potion_new.png",
+    "description": "使用后提升1级",
+    "category": "potion",
+    "usable": true,
+    "stackable": true,
+    "posable": true,
+    "onUse": "addLevel:1"
+  },
+  "4": {
+    "name": "锚",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 395,
+    "description": "既是重武器也是投掷物",
+    "category": "weapon",
+    "slot": "main_hand", 
+    "usable": true,
+    "onUse": "dealDamage:50",
+    "attack": 15
   },
   "5": {
     "name": "金币",
     "iconSheet": "assets/icon.png",
     "iconIndex": 131,
     "description": "货币，可以购买物品",
+    "category": "material",
+    "usable": false,
+    "stackable": true,
+    "posable": true
+  },
+"6": {
+    "name": "铁头盔",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 1905,
+    "description": "最基础的铁头盔，提供少量防御",
+    "category": "equipment",
+    "usable": true, 
+    "stackable": false,
+    "posable": true,
+    "slot": "head",
+    "defense": 2,
+    "price": 100
+  },
+  "7": {
+    "name": "铁胸甲",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 1921,
+    "description": "最基础的铁甲，保护躯干",
+    "category": "equipment",
+    "usable": true,
+    "stackable": false,
+    "posable": true,
+    "slot": "body",
+    "defense": 5,
+    "price": 200
+  },
+  "8": {
+    "name": "铁护腿",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 1937,
+    "description": "最基础的铁护腿，保护腿部",
+    "category": "equipment",
+    "usable": true,
+    "stackable": false,
+    "posable": true,
+    "slot": "legs",
+    "defense": 3,
+    "price": 150
+  },
+    "9": {
+    "name": "木盾",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 1809,
+    "description": "副手装备，增加防御",
+    "category": "weapon",
+    "slot": "off_hand",
+    "defense": 4,
+    "price": 80,
+    "usable": false,
+    "stackable": false,
+    "posable": true
+  },
+  "10": {
+    "name": "力量戒指",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 1843,
+    "description": "增加攻击力的饰品",
+    "category": "equipment",
+    "slot": "accessory",
+    "attack": 5,
+    "price": 300,
+    "usable": false,
+    "stackable": false,
+    "posable": true
+  },
+    "11": {
+    "name": "守护戒指",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 1844,
+    "description": "增加防御力的饰品",
+    "category": "equipment",
+    "slot": "accessory",
+    "defense": 3,
+    "price": 300,
+    "usable": false,
+    "stackable": false,
+    "posable": true
+  },
+    "12": {
+    "name": "木材",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 109,
+    "description": "从树上获取的资源，可以制作简单的物品",
+    "category": "material",
     "usable": false,
     "stackable": true,
     "posable": true
