@@ -39,17 +39,24 @@ local function drawIconSlot(absoluteIndex, x, y, w, h)
     local id = ids[absoluteIndex]
     if not id then return end
 
-    local sx, sy = Layout.toScreen(x, y)
+    -- [关键修复] 删除 Layout.toScreen 调用
+    -- UIGrid 传进来的 x, y 已经是转换好的屏幕坐标，w, h 也是屏幕尺寸
+    local sx, sy = x, y 
+    
     local img, quad, scale = ItemManager.getIcon(id)
     if not img then return end
 
     if quad then
-        love.graphics.draw(img, quad, sx, sy)
+        love.graphics.draw(img, quad, sx, sy) -- 如果有缩放问题，这里可能也要调整 scale
     else
         local iw, ih = img:getWidth(), img:getHeight()
-        local offsetX = (w - iw * scale) / 2
-        local offsetY = (h - ih * scale) / 2
-        love.graphics.draw(img, sx + offsetX, sy + offsetY, 0, scale, scale)
+        -- 重新计算缩放，确保适配传入的屏幕格子大小 w, h
+        local displayScale = math.min(w / iw, h / ih) * 0.8
+        
+        local offsetX = (w - iw * displayScale) / 2
+        local offsetY = (h - ih * displayScale) / 2
+        
+        love.graphics.draw(img, sx + offsetX, sy + offsetY, 0, displayScale, displayScale)
     end
 end
 

@@ -3,7 +3,9 @@ local Layout = require("layout")
 local Config = require("config")
 local InventoryUI = require("inventory_ui")
 local Monster = require("monster")
-local MagicManager = require("MagicManager") -- 引入新模块
+local Inventory = require("inventory")
+local ItemManager = require("ItemManager")
+local MagicManager = require("MagicManager")
 
 local Battle = {}
 
@@ -250,38 +252,97 @@ function Battle.castSpellAction(spell)
     Battle.state.nextTurn = "enemy"
 end
 
--- 3. 使用物品 (保留，略微修改状态重置)
+-- 2. 使用物品
 function Battle.useItemAction()
     if Battle.state.phase ~= "idle" then return end
     
     InventoryUI.previousScene = "battle"
+    
     InventoryUI.onUseItem = function(item)
-        if item then
-            Battle.addLog("使用了 " .. item.name)
-            -- 修复：切回战斗场景前，先确保按钮是主菜单状态
+        if not item then 
+            currentScene = "battle"
+            return 
+        end
+
+        local def = ItemManager.get(item.id)
+        local itemName = def and def.name or "未知物品"
+        
+        -- [新增] 标志位：用于记录是否触发了伤害逻辑
+        local isDamageItem = false
+
+        -- 1. 构建战斗代理
+        local battleProxy = {
+            -- 转发给 Player
+            addHP = Player.addHP,
+            addMP = Player.addMP,
+            addLevel = Player.addLevel,
+
+            -- 拦截伤害逻辑
+            dealDamage = function(amount)
+                -- [标记] 说明这个物品调用了 dealDamage
+                isDamageItem = true 
+                
+                if Battle.state.enemy then
+                    local dmg = tonumber(amount) or 0
+                    Battle.state.enemy.hp = math.max(Battle.state.enemy.hp - dmg, 0)
+                    
+                    Battle.addLog("投掷了 " .. itemName .. "！")
+                    Battle.addLog("造成了 " .. dmg .. " 点伤害！")
+                    
+                    Battle.triggerShake(5)
+                    Battle.addFloatText("-"..dmg, love.graphics.getWidth() - 200, 100, {1, 0, 0})
+                end
+            end
+        }
+
+        -- 2. 使用物品
+        local success, msg = ItemManager.use(item.id, battleProxy)
+
+        if success then
+            -- [修复] 不再检查 def.onUse 字符串，而是检查标志位
+            -- 如果没有触发伤害逻辑（说明是普通药水等），则打印通用日志
+            if not isDamageItem then
+                Battle.addLog("使用了 " .. itemName)
+            end
+
+            -- 3. 从背包移除
+            local category = ItemManager.getCategory(item.id)
+            Inventory:removeItem(item.id, 1, category)
+
             Battle.buildMainMenu()
-            Battle.state.phase = "acting" 
-            Battle.state.timer = 1.0 
+            Battle.state.phase = "acting"
+            Battle.state.timer = 1.0
             Battle.state.nextTurn = "enemy"
             currentScene = "battle"
         else
+            print("使用失败: " .. tostring(msg))
             currentScene = "battle"
         end
     end
+    
     currentScene = "inventory"
 end
 
 -- 4. 敌人回合逻辑
 function Battle.processEnemyTurn()
-    local dmg = (Battle.state.enemy.level or 1) * 8
+    if Battle.state.enemy.hp <= 0 then return end
+
+    local baseDmg = (Battle.state.enemy.level or 1) * 8
     -- 浮动伤害
-    dmg = math.floor(dmg * (math.random(90, 110) / 100))
+    local dmg = math.floor(baseDmg * (math.random(90, 110) / 100))
     
-    Player.data.hp = math.max((Player.data.hp or 0) - dmg, 0)
+    -- [关键修改] 使用 Player.takeDamage 来结算，这样防御力才会生效
+    -- Player.takeDamage 会处理 防御减免 并扣血
+    Player.takeDamage(dmg)
     
     Battle.triggerShake(5)
-    Battle.addLog(Battle.state.enemy.name .. " 攻击造成 " .. dmg .. " 点伤害！")
-    Battle.addFloatText("-"..dmg, 40, love.graphics.getHeight() - 150, {1, 0.2, 0.2})
+    
+    -- 计算实际受到多少伤害用于日志显示 (因为 takeDamage 内部逻辑外部看不见，这里模拟算一下用于显示)
+    local def = Player.data.defense or 0
+    local actualDmg = math.max(dmg - def, 1)
+    
+    Battle.addLog(Battle.state.enemy.name .. " 攻击造成 " .. actualDmg .. " 点伤害！")
+    Battle.addFloatText("-"..actualDmg, 40, love.graphics.getHeight() - 150, {1, 0.2, 0.2})
     
     Battle.state.timer = 1.0
     Battle.state.nextTurn = "player"
@@ -384,7 +445,7 @@ function Battle.draw()
     end
 
     -- 4. 战斗日志 (右侧)
-    love.graphics.setFont(SMALL_FONT)
+    love.graphics.setFont(Fonts.small)
     local logX = love.graphics.getWidth() - 320
     local logY = 120
     for i = #Battle.state.log, 1, -1 do
@@ -401,7 +462,7 @@ function Battle.draw()
     end
 
     -- 5. 飘字绘制 (最上层)
-    love.graphics.setFont(DAMAGE_FONT)
+    love.graphics.setFont(Fonts.large)
     for _, f in ipairs(Battle.state.floatingTexts) do
         love.graphics.setColor(f.color[1], f.color[2], f.color[3], f.life) -- alpha随寿命减少
         -- 文字带黑边，增加可读性

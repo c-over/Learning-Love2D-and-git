@@ -82,5 +82,25 @@ function Layout.mousepressed(x, y, button, buttons)
     end
     return nil
 end
-
+-- 绘制描边文字
+function DrawOutlinedText(text, x, y, font, textColor, outlineColor)
+    local oldFont = love.graphics.getFont()
+    love.graphics.setFont(font or Fonts.normal)
+    
+    -- 绘制描边 (上下左右偏移1像素)
+    love.graphics.setColor(outlineColor or {0,0,0,1})
+    for ox = -1, 1 do
+        for oy = -1, 1 do
+            if ox ~= 0 or oy ~= 0 then
+                love.graphics.print(text, x + ox, y + oy)
+            end
+        end
+    end
+    
+    -- 绘制本体
+    love.graphics.setColor(textColor or {1,1,1,1})
+    love.graphics.print(text, x, y)
+    
+    love.graphics.setFont(oldFont)
+end
 return Layout

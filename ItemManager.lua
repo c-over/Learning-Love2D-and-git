@@ -25,21 +25,42 @@ for sid, def in pairs(raw) do
 end
 table.sort(ItemManager.ids)      -- 保证顺序稳定
 
--- 将 JSON 中的 onUse 转换为函数（懒转换，首次取用时执行一次）
+-- 将 JSON 中的 onUse 转换为动态函数
 local function parseOnUse(def)
     if not def.onUse or type(def.onUse) ~= "string" then return nil end
-    local action, value = def.onUse:match("([^:]+):(%d+)")
-    value = tonumber(value)
-    if action == "addLevel" then
-        return function(player) player.addLevel(value) end
-    elseif action == "addHP" then
-        return function(player) player.addHP(value) end
-    elseif action == "addMP" then
-        return function(player) player.addMP(value) end
-    end
-    return nil
-end
+    if def.onUse == "" then return nil end -- 防止空字符串报错
 
+    -- 1. 解析字符串 "Action:Value" 或 "Action"
+    local action, valueStr = def.onUse:match("([^:]+):(.+)")
+    if not action then
+        action = def.onUse
+        valueStr = nil
+    end
+
+    -- 2. 尝试转数字
+    local value = tonumber(valueStr)
+    if value == nil then value = valueStr end
+
+    -- 3. 返回闭包
+    -- 现在的逻辑非常简单：target[action](value)
+    return function(target)
+        if not target then 
+            print("Error: Item used on nil target")
+            return false 
+        end
+
+        local func = target[action]
+        if type(func) == "function" then
+            -- 直接调用函数，传入数值参数
+            -- 例如: Player.addHP(50) 或 battleProxy.dealDamage(50)
+            func(value) 
+            return true
+        else
+            print(string.format("Error: Target missing method '%s'", tostring(action)))
+            return false
+        end
+    end
+end
 function ItemManager.get(id)
     -- 统一用数字键
     local def = ItemManager.definitions[id]
@@ -91,7 +112,7 @@ function ItemManager.getIcon(id)
     return nil
 end
 
--- 新增：获取物品类别
+-- 获取物品类别
 function ItemManager.getCategory(id)
     local def = ItemManager.get(id)
     if not def then
@@ -112,6 +133,22 @@ function ItemManager.use(id, player)
     else
         return false, "物品不可使用: " .. tostring(id)
     end
+end
+
+function ItemManager.preloadAll()
+    print("[ItemManager] 开始预加载资源...")
+    local startTime = love.timer.getTime()
+    local count = 0
+    
+    -- 遍历所有已知的 ID
+    for _, id in ipairs(ItemManager.ids) do
+        -- 调用 getIcon 会强制触发内部的图片加载和缓存逻辑
+        local img = ItemManager.getIcon(id)
+        if img then count = count + 1 end
+    end
+    
+    local delta = love.timer.getTime() - startTime
+    print(string.format("[ItemManager] 预加载完成，耗时 %.3fs，缓存了 %d 个图标", delta, count))
 end
 
 return ItemManager

@@ -1,6 +1,7 @@
 local Layout = require("layout")
 local Inventory = require("inventory")
 local ItemManager = require("ItemManager")
+local Player = require("player")
 local UIGrid = require("UIGrid")
 
 local InventoryUI = {}
@@ -27,8 +28,9 @@ InventoryUI.hoveredTabIndex = nil
 InventoryUI.debugButtonAdded = false -- 记录Debug按钮是否已添加
 
 -- 标签页配置
-local tabs = {"装备", "药水", "素材", "重要物品"}
+local tabs = {"武器","装备", "药水", "素材", "重要物品"}
 local tabCategories = {
+    "weapon",
     "equipment",
     "potion",
     "material",
@@ -54,6 +56,15 @@ local function createSlotRenderer(items)
         local item = items[itemIndex]
         if not item then return end
 
+        -- === 装备状态背景 ===
+        if item.equipSlot then
+            -- 绘制一个特殊的边框或背景表示已装备
+            love.graphics.setColor(0, 1, 0, 0.2) -- 淡淡的绿色背景
+            love.graphics.rectangle("fill", x, y, w, h)
+            love.graphics.setColor(0, 1, 0, 0.8)
+            love.graphics.rectangle("line", x, y, w, h)
+        end
+        
         -- 1. 绘制背景高亮
         if state.hovered then
             love.graphics.setColor(1, 1, 0, 0.3)
@@ -80,6 +91,13 @@ local function createSlotRenderer(items)
                 _, _, iw, ih = iconQuad:getViewport()
             else
                 iw, ih = iconImage:getWidth(), iconImage:getHeight()
+            end
+            if item.equipSlot then
+                love.graphics.setColor(0.5, 0.5, 0.5, 1) -- 变灰暗
+                love.graphics.setColor(1, 1, 0)
+                love.graphics.print("E", x + 2, y + 2) -- 绘制左上角 "E" 标记
+            else
+                love.graphics.setColor(1, 1, 1, 1) -- 正常亮
             end
 
             local scale = math.min(w / iw, h / ih) * 0.8
@@ -191,14 +209,17 @@ function InventoryUI.draw()
     -- 4. 绘制按钮
     for i, btn in ipairs(InventoryUI.buttons) do
         local bx, by = Layout.toScreen(btn.x, btn.y)
-        local w, h = btn.w, btn.h
+        
+        -- [关键修复] 缩放宽高
+        local bw, bh = Layout.toScreen(btn.w, btn.h)
+
         if InventoryUI.hoveredButtonIndex == i then
             love.graphics.setColor(0.2, 0.8, 1)
         else
             love.graphics.setColor(1, 1, 1)
         end
-        love.graphics.rectangle("line", bx, by, w, h)
-        love.graphics.printf(btn.text, bx, by + (h - love.graphics.getFont():getHeight()) / 2, w, "center")
+        love.graphics.rectangle("line", bx, by, bw, bh)
+        love.graphics.printf(btn.text, bx, by + (bh - love.graphics.getFont():getHeight()) / 2, bw, "center")
     end
     love.graphics.setColor(1, 1, 1)
 end
@@ -271,14 +292,58 @@ function InventoryUI.mousepressed(x, y, button)
             local def = ItemManager.get(item.id)
             local options = {}
             
-            if def.usable then
+            --装备逻辑判断
+            if def.category == "equipment" or def.category == "weapon" then
+                -- 如果有 slot 定义 (说明是可以装备的)
+                if def.slot then
+                    -- [修改] 检查 equipSlot
+                    if item.equipSlot then
+                        table.insert(options, { text="卸下", action=function()
+                            Player.unequipItem(item)
+                            UIGrid.hideActionMenu()
+                        end })
+                    else
+                        table.insert(options, { text="装备", action=function()
+                            Player.equipItem(item)
+                            UIGrid.hideActionMenu()
+                        end })
+                    end
+                end
+
+                -- 可能是投掷物(锚)，也可能是可装备的剑
+                if def.category == "weapon" then
+                    -- 1. 如果它是可消耗/可使用的 (比如锚，有 onUse 且 usable=true)
+                    if def.usable then
+                        table.insert(options, { text="使用/投掷", action=function()
+                            -- 复用原有的使用逻辑
+                            if InventoryUI.onUseItem then
+                                InventoryUI.onUseItem(item) -- 战斗中
+                            else
+                                local success, msg = ItemManager.use(item.id, Player)
+                                if success then
+                                    Inventory:useItem(item.id, 1, tabCategories[InventoryUI.activeTab])
+                                    currentScene = InventoryUI.previousScene or "game"
+                                end
+                            end
+                            UIGrid.hideActionMenu()
+                        end })
+                    end
+                end
+
+            -- 情况C: 普通药水/消耗品
+            elseif def.usable then 
                 table.insert(options, { text="使用", action=function()
-                    local success, err = pcall(function()
-                        if InventoryUI.onUseItem then InventoryUI.onUseItem(item) end
-                    end)
-                    if not success then print("Inventory Error:", err) end
-                    Inventory:useItem(item.id, 1, tabCategories[InventoryUI.activeTab])
-                    currentScene = InventoryUI.previousScene or "game"
+                    -- ... (保持原有的使用逻辑) ...
+                    if InventoryUI.onUseItem then
+                        InventoryUI.onUseItem(item)
+                    else
+                        local success, msg = ItemManager.use(item.id, Player)
+                        if success then
+                            Inventory:useItem(item.id, 1, tabCategories[InventoryUI.activeTab])
+                            currentScene = InventoryUI.previousScene or "game"
+                        end
+                    end
+                    UIGrid.hideActionMenu()
                 end })
             end
             

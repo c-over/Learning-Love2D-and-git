@@ -186,16 +186,25 @@ end
 -- 查找出生点 (返回的也是左上角坐标)
 function Core.findSpawnPoint(tileSize)
     local radius = 0
-    while true do
+    local maxRadius = 100 -- [新增] 设置最大搜索半径，防止死循环
+    
+    while radius < maxRadius do
+        -- 螺旋/环形遍历
         for ty = -radius, radius do
             for tx = -radius, radius do
-                if not Core.isSolidTile(tx, ty) then
-                    return tx * tileSize, ty * tileSize -- 返回格子左上角
+                -- 只检查环的边缘，避免重复检查内部
+                if math.abs(tx) == radius or math.abs(ty) == radius then
+                    if not Core.isSolidTile(tx, ty) then
+                        return tx * tileSize, ty * tileSize -- 也是左上角
+                    end
                 end
             end
         end
         radius = radius + 1
     end
+    
+    print("Error: 找不到安全的出生点！")
+    return 100, 100 -- [新增] 兜底坐标，防止返回 nil
 end
 
 return Core

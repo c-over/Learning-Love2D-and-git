@@ -158,7 +158,7 @@ function Title.draw()
         Layout.draw("无限2D世界 Demo", {}, Title.buttons, selectedIndex)
 
         -- 4. 版本号
-        local version = "v0.0.9"
+        local version = "v0.1"
         local font = love.graphics.getFont()
         local x = love.graphics.getWidth() - font:getWidth(version) - 10
         local y = love.graphics.getHeight() - font:getHeight() - 5
