@@ -27,7 +27,31 @@ local COLORS = {
 }
 
 GameUI.buttons = {}
+-- === 飘字系统 ===
+GameUI.floatingTexts = {}
 
+function GameUI.addFloatText(text, x, y, color)
+    table.insert(GameUI.floatingTexts, {
+        text = text,
+        x = x,
+        y = y,
+        oy = 0,         -- 向上飘动的偏移量
+        life = 1.5,     -- 存在时间
+        color = color or {1, 1, 1, 1}
+    })
+end
+
+-- 更新飘字 (需要在 game.lua 的 update 中调用)
+function GameUI.update(dt)
+    for i = #GameUI.floatingTexts, 1, -1 do
+        local f = GameUI.floatingTexts[i]
+        f.life = f.life - dt
+        f.oy = f.oy - dt * 40 -- 向上飘的速度
+        if f.life <= 0 then
+            table.remove(GameUI.floatingTexts, i)
+        end
+    end
+end
 -- === 初始化 ===
 function GameUI.load()
     -- 重新计算按钮布局
@@ -199,6 +223,33 @@ end
 function GameUI.draw()
     drawStatusBar()
     drawMenu()
+    -- 绘制飘字
+    local font = Fonts.medium or love.graphics.getFont() -- 使用大一点的字体
+    love.graphics.setFont(font)
+    
+    local w, h = love.graphics.getDimensions()
+    -- 获取摄像机位置 (需要把世界坐标转为屏幕坐标)
+    local camX, camY = 0, 0
+    if require("game").player then -- 防止循环引用报错
+        local p = require("game").player
+        camX = p.x - w/2
+        camY = p.y - h/2
+    end
+
+    for _, f in ipairs(GameUI.floatingTexts) do
+        -- 计算屏幕坐标
+        local sx = f.x - camX
+        local sy = f.y - camY + f.oy
+        
+        -- 阴影 (黑色描边效果)
+        love.graphics.setColor(0, 0, 0, f.life) -- 透明度随寿命衰减
+        love.graphics.print(f.text, sx + 1, sy + 1)
+        
+        -- 本体
+        love.graphics.setColor(f.color[1], f.color[2], f.color[3], f.life)
+        love.graphics.print(f.text, sx, sy)
+    end
+    love.graphics.setColor(1, 1, 1)
 end
 
 -- === 输入处理 (不变) ===

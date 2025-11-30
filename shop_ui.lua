@@ -280,27 +280,67 @@ function ShopUI.draw()
 
     -- 内容区域 (标签页1: 对话)
     if ShopUI.activeTab == 1 then
-        -- [关键修复] 使用虚拟坐标基准
         local vContentX = vWinX + 40
         local vContentY = vWinY + 80
-        
         local sContentX, sContentY = Layout.toScreen(vContentX, vContentY)
-        local sTextBoxY = select(2, Layout.toScreen(0, vContentY + 30)) -- 只转换Y坐标
-        local sTextBoxW, sTextBoxH = Layout.toScreen(vWinW - 80, 200)
-
+        
+        -- 绘制商人名字
         love.graphics.setColor(COLORS.gold)
         love.graphics.print(ShopUI.merchant.name or "商人", sContentX, sContentY)
         
-        love.graphics.setColor(0, 0, 0, 0.3)
-        -- 注意：这里 sTextBoxY 实际上算错了，应该是 Layout.toScreen(vContentX, vContentY + 30) 的 Y
+        -- 绘制对话框背景
         local sRectX, sRectY = Layout.toScreen(vContentX, vContentY + 30)
-        love.graphics.rectangle("fill", sRectX, sRectY, sTextBoxW, sTextBoxH, 5, 5)
+        local sRectW, sRectH = Layout.toScreen(vWinW - 80, 200)
+        love.graphics.setColor(0, 0, 0, 0.3)
+        love.graphics.rectangle("fill", sRectX, sRectY, sRectW, sRectH, 5, 5)
         
+        -- === [核心] 任务逻辑判断 ===
+        -- 任务状态存储在 Player.data.questStatus 中
+        -- nil: 未接, "active": 进行中, "killed": 已杀BOSS, "completed": 已交任务
+        local status = Player.data.questStatus
+        local dialogue = "欢迎光临！看看有什么需要的吗？"
+        local btnText = nil
+        
+        if status == nil then
+            dialogue = "最近北方的森林里出现了一个魔王，搞得人心惶惶。\n勇士，你能帮我去消灭它吗？"
+            btnText = "接受任务"
+        elseif status == "active" then
+            dialogue = "魔王非常强大，请务必小心。它就在北边的森林深处。\n打败它后记得回来找我。"
+        elseif status == "killed" then
+            dialogue = "天哪！你真的做到了！\n这是传说中的【皇家徽章】，请收下它作为谢礼。"
+            btnText = "交付任务"
+        elseif status == "completed" then
+            dialogue = "感谢你，伟大的英雄！你永远是本店的贵宾。"
+        end
+        
+        -- 绘制对话文本
         local sTextX, sTextY = Layout.toScreen(vContentX + 20, vContentY + 50)
-        local sTextWidth = Layout.toScreen(vWinW - 120, 0)
-        
+        local sTextW = Layout.toScreen(vWinW - 120, 0)
         love.graphics.setColor(COLORS.text)
-        love.graphics.printf(ShopUI.merchant.dialogue or "欢迎！", sTextX, sTextY, sTextWidth, "left")
+        love.graphics.printf(dialogue, sTextX, sTextY, sTextW, "left")
+        
+        -- 绘制交互按钮 (如果有)
+        if btnText then
+            local vBtnX, vBtnY = vContentX + 20, vContentY + 180
+            local sBtnX, sBtnY = Layout.toScreen(vBtnX, vBtnY)
+            local sBtnW, sBtnH = Layout.toScreen(120, 40)
+            
+            -- 简单的按钮绘制
+            local mx, my = love.mouse.getPosition()
+            local hovered = (mx >= sBtnX and mx <= sBtnX + sBtnW and my >= sBtnY and my <= sBtnY + sBtnH)
+            
+            if hovered then love.graphics.setColor(0.2, 0.8, 0.2)
+            else love.graphics.setColor(0.2, 0.6, 0.2) end
+            
+            love.graphics.rectangle("fill", sBtnX, sBtnY, sBtnW, sBtnH, 5)
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.printf(btnText, sBtnX, sBtnY + select(2,Layout.toScreen(0,10)), sBtnW, "center")
+            
+            -- 记录按钮 rect 供点击检测 (临时存储在 ShopUI)
+            ShopUI.questBtnRect = {x=vBtnX, y=vBtnY, w=120, h=40}
+        else
+            ShopUI.questBtnRect = nil
+        end
 
     elseif ShopUI.activeTab == 2 then
         -- 买卖界面的 UIGrid 已经处理了 Layout.toScreen，所以不需要大改
@@ -395,6 +435,45 @@ function ShopUI.mousepressed(x, y, button)
     local clickedButtonIndex = Layout.mousepressed(x, y, button, ShopUI.buttons)
     if clickedButtonIndex then return end
 
+        if ShopUI.activeTab == 1 and button == 1 and ShopUI.questBtnRect then
+        local b = ShopUI.questBtnRect
+        if vx >= b.x and vx <= b.x + b.w and vy >= b.y and vy <= b.y + b.h then
+            -- 处理点击逻辑
+            local status = Player.data.questStatus
+            
+            if status == nil then
+                -- 接受任务
+                Player.data.questStatus = "active"
+                -- 添加到任务列表
+                table.insert(Player.data.quests, {
+                    name = "讨伐魔王",
+                    description = "前往 (-50, -1200) 击败魔王，然后向商人回复。",
+                    id = "kill_boss"
+                })
+                -- [关键] 立即生成 BOSS
+                local Monster = require("monster")
+                Monster.spawnBoss(0, -1000) -- 生成在上方
+                print("任务接受，BOSS 已生成！")
+                
+            elseif status == "killed" then
+                -- 交付任务
+                Player.data.questStatus = "completed"
+                -- 发放奖励 (ID 20: 皇家徽章)
+                local Inventory = require("inventory")
+                Inventory:addItem(20, 1, "equipment")
+                
+                -- 更新任务列表描述
+                for _, q in ipairs(Player.data.quests) do
+                    if q.id == "kill_boss" then
+                        q.name = "讨伐魔王 (已完成)"
+                        q.description = "你已经击败了魔王，不仅拯救了村庄，还发了财。"
+                    end
+                end
+                print("任务完成，奖励已发放！")
+            end
+            return -- 阻止穿透
+        end
+    end
     -- 物品买卖
     if ShopUI.activeTab == 2 or ShopUI.activeTab == 3 then
         local visualIndex = UIGrid.getIndexAtPosition(vx, vy)

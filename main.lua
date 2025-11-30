@@ -1,12 +1,3 @@
--- 1. 解决控制台输出延迟/不换行的问题
--- 关闭标准输出缓冲，让 print 立即显示
-io.stdout:setvbuf("no")
-
--- 2. 解决 Windows 控制台中文乱码问题
--- 如果是 Windows 系统，强制将控制台代码页切换为 65001 (UTF-8)
-if love.system.getOS() == "Windows" then
-    os.execute("chcp 65001 >nul")
-end
 local Title = require("title")
 local Game = require("game")
 local Layout = require("layout")
@@ -43,6 +34,9 @@ function love.load()
     bgMusic:setLooping(true)
     bgMusic:play()
     Settings.init(bgMusic)
+    bossMusic = love.audio.newSource("assets/sounds/FinalBattle.mp3", "stream")
+    bossMusic:setLooping(true) -- 循环播放
+    bossMusic:setVolume(1.0)   -- 音量拉满
 
     debugMode = false  -- 初始关闭
     Player.load()   -- 从存档读取数据
@@ -203,6 +197,8 @@ end
 function love.wheelmoved(x, y)
     if currentScene == "icon_browser" then
         IconBrowser.wheelmoved(x, y)
+    elseif currentScene == "inventory" then
+        InventoryUI.wheelmoved(x, y)
     end
 end
 

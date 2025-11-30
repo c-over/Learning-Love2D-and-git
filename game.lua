@@ -76,6 +76,18 @@ function Game.load()
     
     -- 初始计算一次属性 (应用装备加成)
     Player.recalcStats()
+    if Player.data.questStatus == "active" then
+        -- 简单检查一下场上有没有BOSS，防止重复生成
+        local hasBoss = false
+        for _, m in ipairs(Monster.list) do
+            if m.isBoss then hasBoss = true break end
+        end
+        
+        if not hasBoss then
+            Monster.spawnBoss(-50, -1200)
+            print("读档恢复：BOSS 已重新生成")
+        end
+    end
 end
 
 function Game.update(dt)
@@ -88,7 +100,7 @@ function Game.update(dt)
     if i then
         Battle.enterBattle(i, monster)
     end
-
+    GameUI.update(dt)
     local npc = Merchant.checkCollision(Game.player, aabbOverlap)
     if npc then
         Game.nearMerchant = npc
@@ -142,7 +154,21 @@ function Game.mousemoved(x, y)
         InventoryUI.mousemoved(x, y)
     end
 end
+-- 辅助函数：生成木材掉落
+local function dropWood(gx, gy)
+    local count = love.math.random(3, 5)
+    local tileSize = Game.tileSize
+    
+    -- 树的中心坐标
+    local centerX = gx * tileSize + 16
+    local centerY = gy * tileSize + 16
 
+    for i = 1, count do
+        -- 直接从树中心生成，Pickup.create 内部会赋予它们向四周炸开的速度
+        Pickup.create(centerX, centerY, "wood", 1)
+    end
+    print("砍树成功！")
+end
 function Game.mousepressed(x, y, button)
     if currentScene == "player" then
         local result = Player.mousepressed(x, y, button)
@@ -152,7 +178,38 @@ function Game.mousepressed(x, y, button)
         if result == "title" then currentScene = "title" end
     else
         local handled = GameUI.mousepressed(x, y, button)
-        if not handled then -- 世界的其他点击逻辑
+    end
+        -- 游戏场景点击
+    if button == 1 and currentScene == "game" then
+        local w, h = love.graphics.getDimensions()
+        local camX = Game.player.x - w/2
+        local camY = Game.player.y - h/2
+        
+        -- 鼠标的世界坐标
+        local worldX = x + camX
+        local worldY = y + camY
+        
+        -- 转换为格子坐标
+        local gx = math.floor(worldX / Game.tileSize)
+        local gy = math.floor(worldY / Game.tileSize)
+        
+        -- 判断是否点击了树
+        -- (这里假设 Core.isSolidTile 或 Map.getTile 返回 "tree" 字符串)
+        -- 你需要根据你 map.lua 的具体实现来获取 tile 类型
+        local tileType = Map.getTile(gx, gy) 
+        
+        if tileType == "tree" then
+            -- 简单的距离检测：太远不能砍
+            local dist = math.sqrt((Game.player.x - worldX)^2 + (Game.player.y - worldY)^2)
+            if dist < 100 then
+                -- 1. 掉落木材
+                dropWood(gx, gy)
+                
+                -- 2. 移除树木 (变成草地)
+                Map.setTile(gx, gy, "grass") 
+            else
+                print("太远了，砍不到！")
+            end
         end
     end
 end

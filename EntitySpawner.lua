@@ -110,7 +110,12 @@ function EntitySpawner.new(config)
             if spawner.config.updateFunc then
                 spawner.config.updateFunc(e, dt, player, tileSize, Core)
             end
+            if e.life and e.life < 0 then
+                table.remove(spawner.list, i)
+            end
         end
+
+        
     end
 
     -- 绘制
@@ -133,7 +138,6 @@ function EntitySpawner.new(config)
         end
         return nil, nil
     end
-
     return spawner
 end
 

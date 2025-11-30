@@ -122,17 +122,25 @@ end
 -- 重新计算按钮位置布局
 function Battle.layoutButtons()
     local btnCount = #Battle.buttons
-    local bw, bh = 120, 40 -- 稍微加宽一点适应文字
-    local startX = (love.graphics.getWidth() - (bw * math.min(4, btnCount) + 20)) / 2
-    local by = love.graphics.getHeight() - 80
+    local bw, bh = 120, 40 
+    local margin = 10
     
-    -- 简单的自动换行布局，防止魔法太多超出屏幕
+    -- 限制一行最多 4 个
+    local cols = math.min(4, btnCount)
+    
+    -- 计算起始 X，使其在虚拟屏幕居中
+    local totalW = cols * bw + (cols - 1) * margin
+    local startX = (Layout.virtualWidth - totalW) / 2
+    
+    -- Y 轴位置：放在虚拟屏幕底部上方一点
+    local startY = Layout.virtualHeight - 100 
+    
     for i, btn in ipairs(Battle.buttons) do
         local col = (i - 1) % 4
         local row = math.floor((i - 1) / 4)
         
-        btn.x = startX + col * (bw + 10)
-        btn.y = by + row * (bh + 5)
+        btn.x = startX + col * (bw + margin)
+        btn.y = startY + row * (bh + 5)
         btn.w = bw
         btn.h = bh
     end
@@ -146,7 +154,9 @@ function Battle.start(enemyPayload, enemyIndex, onResolve)
         name = enemyPayload.name,
         level = enemyPayload.level or 1,
         hp = enemyPayload.hp or 50,
-        maxHp = enemyPayload.hp or 50
+        maxHp = enemyPayload.maxHp or enemyPayload.hp or 50,
+        attack = enemyPayload.attack,
+        isBoss = enemyPayload.isBoss
     }
     Battle.state.enemyIndex = enemyIndex
     Battle.state.onResolve = onResolve
@@ -162,6 +172,17 @@ function Battle.start(enemyPayload, enemyIndex, onResolve)
 
     currentScene = "battle"
     Battle.addLog("遭遇了 " .. Battle.state.enemy.name .. "！")
+    -- 音乐切换逻辑
+    if Battle.state.enemy.isBoss and bossMusic then
+        -- 暂停平时的背景音乐
+        if bgMusic:isPlaying() then
+            bgMusic:pause() 
+        end
+        -- 播放 BOSS 音乐
+        bossMusic:stop() -- 先停止以防万一
+        bossMusic:play()
+    end
+
 end
 
 function Battle.resolveBattle(result)
@@ -327,22 +348,58 @@ end
 function Battle.processEnemyTurn()
     if Battle.state.enemy.hp <= 0 then return end
 
-    local baseDmg = (Battle.state.enemy.level or 1) * 8
-    -- 浮动伤害
-    local dmg = math.floor(baseDmg * (math.random(90, 110) / 100))
+    local enemy = Battle.state.enemy
+    local actionName = "攻击"
+    local dmg = 0
+    local heal = 0
     
-    -- [关键修改] 使用 Player.takeDamage 来结算，这样防御力才会生效
-    -- Player.takeDamage 会处理 防御减免 并扣血
-    Player.takeDamage(dmg)
-    
-    Battle.triggerShake(5)
-    
-    -- 计算实际受到多少伤害用于日志显示 (因为 takeDamage 内部逻辑外部看不见，这里模拟算一下用于显示)
-    local def = Player.data.defense or 0
-    local actualDmg = math.max(dmg - def, 1)
-    
-    Battle.addLog(Battle.state.enemy.name .. " 攻击造成 " .. actualDmg .. " 点伤害！")
-    Battle.addFloatText("-"..actualDmg, 40, love.graphics.getHeight() - 150, {1, 0.2, 0.2})
+    -- 基础伤害
+    local baseDmg = (enemy.level or 1) * 8
+    if enemy.attack then baseDmg = enemy.attack end -- 如果有自定义攻击力
+
+    -- === BOSS AI 逻辑 ===
+    if enemy.isBoss then
+        local hpPercent = enemy.hp / enemy.maxHp
+        
+        -- 阶段 3: 血量 < 30% (增加回血技能)
+        if hpPercent < 0.3 and math.random() < 0.3 then -- 30% 概率回血
+            actionName = "暗影治愈"
+            heal = math.floor(enemy.maxHp * 0.1) -- 回复 10%
+            enemy.hp = math.min(enemy.hp + heal, enemy.maxHp)
+            
+        -- 阶段 2: 血量 < 80% (增加重击)
+        elseif hpPercent < 0.8 and math.random() < 0.4 then -- 40% 概率重击
+            actionName = "毁灭重击"
+            dmg = math.floor(baseDmg * 2.0) -- 2倍伤害
+            
+        -- 阶段 1: 正常攻击
+        else
+            actionName = "普通攻击"
+            dmg = math.floor(baseDmg * (math.random(90, 110) / 100))
+        end
+    else
+        -- 普通怪物逻辑
+        dmg = math.floor(baseDmg * (math.random(90, 110) / 100))
+    end
+
+    -- === 结算 ===
+    if heal > 0 then
+        Battle.addLog(enemy.name .. " 使用了 " .. actionName .. "！")
+        Battle.addLog("恢复了 " .. heal .. " 点生命。")
+        Battle.addFloatText("+"..heal, love.graphics.getWidth() - 100, 150, {0, 1, 0})
+    else
+        -- 玩家扣血 (计算防御)
+        Player.takeDamage(dmg)
+        
+        -- 显示日志
+        Battle.triggerShake(dmg > baseDmg and 10 or 5) -- 重击震动大
+        
+        local def = Player.data.defense or 0
+        local actualDmg = math.max(dmg - def, 1)
+        
+        Battle.addLog(enemy.name .. " 使用 " .. actionName .. " 造成 " .. actualDmg .. " 伤害！")
+        Battle.addFloatText("-"..actualDmg, 40, love.graphics.getHeight() - 150, {1, 0.2, 0.2})
+    end
     
     Battle.state.timer = 1.0
     Battle.state.nextTurn = "player"
@@ -438,10 +495,40 @@ function Battle.draw()
         love.graphics.print("Lv." .. (Battle.state.enemy.level or 1), eX, margin + 30)
     end
 
-    -- 3. 按钮 (通过 Layout 绘制)
-    -- 只有在玩家回合且非动画状态才激活按钮显示
+    -- 3. 按钮 (替换原有的 Layout.draw)
+    -- 只有在玩家回合且非动画状态才显示
     if Battle.state.turn == "player" and Battle.state.phase == "idle" then
-        Layout.draw("", {}, Battle.buttons, Battle.selectedIndex or -1, 0)
+        local mx, my = love.mouse.getPosition()
+        -- 获取鼠标悬停的按钮索引
+        local hoveredIndex = Layout.mousemoved(mx, my, Battle.buttons)
+        
+        for i, btn in ipairs(Battle.buttons) do
+            -- [关键] 将虚拟坐标转换为屏幕坐标
+            local bx, by = Layout.toScreen(btn.x, btn.y)
+            local bw, bh = Layout.toScreen(btn.w, btn.h)
+            
+            -- 悬停效果
+            if i == hoveredIndex then
+                love.graphics.setColor(0.2, 0.8, 1, 0.8) -- 亮蓝
+                love.graphics.rectangle("fill", bx, by + 2, bw, bh, 5, 5) -- 下沉效果
+            else
+                love.graphics.setColor(0.1, 0.1, 0.1, 0.6) -- 半透明黑底
+                love.graphics.rectangle("fill", bx, by, bw, bh, 5, 5)
+                love.graphics.setColor(1, 1, 1, 0.5) -- 白边框
+                love.graphics.rectangle("line", bx, by, bw, bh, 5, 5)
+            end
+            
+            -- 按钮文字
+            love.graphics.setColor(1, 1, 1)
+            -- 如果有 Fonts.medium 就用，没有就用默认
+            local font = Fonts.medium or love.graphics.getFont()
+            love.graphics.setFont(font)
+            
+            local textY = by + (bh - font:getHeight()) / 2
+            if i == hoveredIndex then textY = textY + 2 end -- 文字跟随下沉
+            
+            love.graphics.printf(btn.text, bx, textY, bw, "center")
+        end
     end
 
     -- 4. 战斗日志 (右侧)
@@ -516,14 +603,35 @@ function Battle.enterBattle(i, monster)
         monster,
         i,
         function(outcome, enemyIndex)
+            -- 如果 BOSS 音乐正在播放，说明刚才是在打 BOSS
+            if bossMusic and bossMusic:isPlaying() then
+                bossMusic:stop()
+                -- 恢复平时的背景音乐
+                bgMusic:play()
+            end
             if outcome.result == "win" then
                 table.remove(Monster.list, enemyIndex)
-                local expReward = monster.level * 50
-                local goldReward = monster.level * 10
-                Player.gainExp(expReward)
-                Player.addGold(goldReward)
-                -- 可以添加一个结算弹窗，这里简单打印
-                print("战斗胜利！获得 EXP:"..expReward.." 金币:"..goldReward)
+
+                -- BOSS 掉落与任务更新
+                if monster.isBoss then
+                    print("BOSS 被击败！")
+                    Player.data.questStatus = "killed" -- 更新状态
+                    -- 掉落大量金币
+                    local Pickup = require("pickup")
+                    Pickup.create(monster.x, monster.y, "coin", 5000)
+                    
+                    -- 更新任务描述 (UI显示用)
+                    for _, q in ipairs(Player.data.quests) do
+                        if q.id == "kill_boss" then
+                            q.description = "魔王已被击败！快回去找商人领赏。"
+                        end
+                    end
+                else
+                    -- 普通怪奖励
+                    local expReward = monster.level * 20
+                    Player.gainExp(expReward)
+                    Player.addGold(monster.level * 5)
+                end
 
             elseif outcome.result == "lose" then
                 Player.data.hp = 1

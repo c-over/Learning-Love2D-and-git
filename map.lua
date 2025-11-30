@@ -1,12 +1,12 @@
--- Map.lua
 local Map = {}
-
-local Debug = require("debug_utils")
+-- 动态引用 Debug，防止循环依赖
+local Debug = nil 
 
 -- 配置
 Map.chunkSize = 64
+Map.tileSize = 32
 
--- 1. 加载图片
+-- 1. 加载图片 (确保路径正确)
 Map.textures = {
     water   = love.graphics.newImage("assets/water.png"),
     shore   = love.graphics.newImage("assets/shore.png"),
@@ -17,29 +17,33 @@ Map.textures = {
     tree    = love.graphics.newImage("assets/tree.png"),
 }
 
--- 2. 定义渲染层级顺序 (关键修复：解决树木被草覆盖的问题)
+-- 2. 定义渲染层级顺序 (先画地，再画树)
 Map.layerOrder = {
     "water",
     "shore",
     "sand",
     "rock",
-    "grass",   -- 草在树下面
+    "grass",   -- 地面
     "flower",
-    "tree"     -- 树在最上面
+    "tree"     -- 遮挡物
 }
 
 -- 3. 初始化 SpriteBatch
 Map.spriteBatches = {}
 for name, tex in pairs(Map.textures) do
-    -- 关键修复：增加容量上限到 20000，防止同屏物体过多导致后面的画不出来
+    -- 容量设为 20000 足够同屏绘制
     Map.spriteBatches[name] = love.graphics.newSpriteBatch(tex, 20000, "dynamic")
 end
+
+-- [关键修复 1] 初始化修改数据表
+-- key="x,y", value="tileType"
+Map.data = {}
 
 -- 缓存
 Map.chunks = {}
 Map.colliders = {}
 
--- 群系判定
+-- 群系判定 (生成逻辑)
 function Map.getBiome(x, y)
     local b = love.math.noise(x * 0.02, y * 0.02)
     if b < 0.25 then return "lake"
@@ -48,10 +52,18 @@ function Map.getBiome(x, y)
     else return "forest" end
 end
 
--- 地形判定
-function Map.getTile(x, y)
-    local biome = Map.getBiome(x, y)
-    local n = love.math.noise(x * 0.1, y * 0.1)
+-- 获取地形 (核心逻辑：优先读修改，其次读生成)
+function Map.getTile(gx, gy)
+    local key = gx .. "," .. gy
+    
+    -- [关键修复 2] 优先检查是否有被砍掉的记录
+    if Map.data[key] then
+        return Map.data[key]
+    end
+
+    -- 生成逻辑
+    local biome = Map.getBiome(gx, gy)
+    local n = love.math.noise(gx * 0.1, gy * 0.1)
 
     if biome == "lake" then
         return (n < 0.7) and "water" or "shore"
@@ -62,10 +74,30 @@ function Map.getTile(x, y)
     elseif biome == "forest" then
         if n < 0.5 then return "tree" else return "grass" end
     end
+    
+    return "grass" -- 兜底
+end
+
+-- 修改地块 (砍树时调用)
+function Map.setTile(tx, ty, typeName)
+    local key = tx .. "," .. ty
+    Map.data[key] = typeName
+    
+    -- [关键修复 3] 清除对应的 Chunk 缓存，强制下次重绘时更新
+    -- 计算所在的 chunk 坐标
+    local cx = math.floor(tx / Map.chunkSize)
+    local cy = math.floor(ty / Map.chunkSize)
+    local chunkKey = cx .. "," .. cy
+    Map.chunks[chunkKey] = nil
+    
+    -- 同时也需要更新碰撞缓存 (如果树被砍了，碰撞也没了)
+    if typeName ~= "tree" and typeName ~= "rock" and typeName ~= "water" then
+         Map.colliders[key] = nil
+    end
 end
 
 -- 生成 Chunk
-function Map.generateChunk(cx, cy, Game)
+function Map.generateChunk(cx, cy)
     local key = cx .. "," .. cy
     if Map.chunks[key] then return Map.chunks[key] end
 
@@ -75,21 +107,16 @@ function Map.generateChunk(cx, cy, Game)
         for i = 0, Map.chunkSize-1 do
             local gx = cx * Map.chunkSize + i
             local gy = cy * Map.chunkSize + j
+            
+            -- [关键] 这里调用的 getTile 会自动识别被砍过的树
             local tile = Map.getTile(gx, gy)
             chunk[j][i] = tile
 
-            -- 记录碰撞盒 (仅在首次生成时记录)
-            if tile == "tree" then
-                local tex = Map.textures["tree"]
-                local scaleX = Game.tileSize / tex:getWidth()
-                local scaleY = Game.tileSize / tex:getHeight()
-                local w = tex:getWidth() * scaleX
-                local h = tex:getHeight() * scaleY
-                local x = gx * Game.tileSize
-                local y = gy * Game.tileSize
-                
-                -- 使用坐标作为key，避免重复添加
-                Map.colliders[gx .. "," .. gy] = {x=x, y=y, w=w, h=h}
+            -- 更新碰撞盒缓存
+            -- 注意：只添加阻挡物
+            if tile == "tree" or tile == "rock" or tile == "water" then
+                -- 简单的碰撞判定逻辑
+                Map.colliders[gx .. "," .. gy] = true
             end
         end
     end
@@ -99,96 +126,64 @@ end
 
 -- 绘制地图
 function Map.draw(Game, camX, camY)
-    local w, h = love.graphics.getWidth(), love.graphics.getHeight()
-    -- 多渲染一圈，防止边缘闪烁
-    local tilesX = math.ceil(w / Game.tileSize) + 1
-    local tilesY = math.ceil(h / Game.tileSize) + 1
-
-    local startX = math.floor(camX / Game.tileSize)
-    local startY = math.floor(camY / Game.tileSize)
+    if not Debug then Debug = require("debug_utils") end
+    
+    local w, h = love.graphics.getDimensions()
+    local tileSize = Game.tileSize or Map.tileSize
+    
+    -- 计算屏幕内可见的格子范围
+    local startX = math.floor(camX / tileSize) - 1
+    local startY = math.floor(camY / tileSize) - 1
+    local tilesX = math.ceil(w / tileSize) + 2
+    local tilesY = math.ceil(h / tileSize) + 2
 
     -- 清空 Batch
     for _, batch in pairs(Map.spriteBatches) do
         batch:clear()
     end
 
-    -- 填充 Batch
-    for j = -1, tilesY do -- 从 -1 开始，防止上方边缘裁切
-        for i = -1, tilesX do -- 从 -1 开始，防止左侧边缘裁切
+    -- 填充 Batch (只遍历屏幕范围内的格子)
+    for j = 0, tilesY do
+        for i = 0, tilesX do
             local gx = startX + i
             local gy = startY + j
 
-            local cx = math.floor(gx / Map.chunkSize)
-            local cy = math.floor(gy / Map.chunkSize)
-            local chunk = Map.generateChunk(cx, cy, Game)
-
-            -- 修正负数取模的问题 (Lua的 % 已经是正确处理负数的，但为了保险起见对应chunk逻辑)
-            local tx = gx % Map.chunkSize
-            local ty = gy % Map.chunkSize
+            -- [优化] 动态获取 Tile，而不是依赖 Chunk 缓存
+            -- 因为我们只画屏幕内的，所以即使每次算 noise 也很快
+            -- 而且这样能保证 setTile 的修改是瞬时可见的
+            local tile = Map.getTile(gx, gy)
             
-            -- 安全检查：防止 chunk 生成逻辑出错导致索引越界
-            if chunk and chunk[ty] and chunk[ty][tx] then
-                local tile = chunk[ty][tx]
+            if tile then
+                local drawX = math.floor(gx * tileSize - camX)
+                local drawY = math.floor(gy * tileSize - camY)
 
-                -- 坐标取整，防止像素画在移动时出现裂缝或抖动
-                local drawX = math.floor(gx * Game.tileSize - camX)
-                local drawY = math.floor(gy * Game.tileSize - camY)
-
-                -- 逻辑：如果是树或花，先在 "grass" 层画底图
+                -- 1. 如果是树或花，先画底下的草，防止穿帮
                 if tile == "tree" or tile == "flower" then
                     local grassTex = Map.textures["grass"]
-                    local scaleX = Game.tileSize / grassTex:getWidth()
-                    local scaleY = Game.tileSize / grassTex:getHeight()
+                    local scaleX = tileSize / grassTex:getWidth()
+                    local scaleY = tileSize / grassTex:getHeight()
                     Map.spriteBatches["grass"]:add(drawX, drawY, 0, scaleX, scaleY)
                 end
 
-                -- 添加当前 tile 到对应层的 batch
+                -- 2. 添加到对应层的 batch
                 local tex = Map.textures[tile]
                 if tex then
-                    local scaleX = Game.tileSize / tex:getWidth()
-                    local scaleY = Game.tileSize / tex:getHeight()
-                    Map.spriteBatches[tile]:add(drawX, drawY, 0, scaleX, scaleY)
+                    local scaleX = tileSize / tex:getWidth()
+                    local scaleY = tileSize / tex:getHeight()
+                    -- 安全检查，防止 Batch 满了报错
+                    pcall(function() 
+                        Map.spriteBatches[tile]:add(drawX, drawY, 0, scaleX, scaleY) 
+                    end)
                 end
             end
         end
     end
 
-    -- 绘制 Batches (关键修复：按照固定顺序绘制)
+    -- 提交绘制
     love.graphics.setColor(1, 1, 1, 1)
     for _, layerName in ipairs(Map.layerOrder) do
         if Map.spriteBatches[layerName] then
             love.graphics.draw(Map.spriteBatches[layerName])
-        end
-    end
-
-    -- Debug 绘制优化
-    if debugMode then
-        local debugEntities = {}
-        -- 优化：只遍历当前屏幕附近的碰撞箱，而不是全图遍历
-        -- 这里使用简单的范围估算，实际项目中可用空间哈希优化
-        local checkRange = 2 -- 检查视野外几格
-        for j = -checkRange, tilesY + checkRange do
-            for i = -checkRange, tilesX + checkRange do
-                local gx = startX + i
-                local gy = startY + j
-                local key = gx .. "," .. gy
-                local c = Map.colliders[key]
-                if c then
-                    table.insert(debugEntities, {
-                        x = c.x + c.w / 2,
-                        y = c.y + c.h / 2,
-                        w = c.w,
-                        h = c.h
-                    })
-                end
-            end
-        end
-
-        if #debugEntities > 0 then
-            -- 确保 debug 库已加载
-            if Debug and Debug.drawHitboxes then
-                Debug.drawHitboxes(debugEntities, camX, camY, 0, 1, 0)
-            end
         end
     end
 end

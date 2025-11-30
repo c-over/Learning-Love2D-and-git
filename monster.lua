@@ -14,7 +14,18 @@ local monsterTypes = {
     {name="哥布林", level=2, hp=80, color={0,0.8,0.2}, speed=50, range=150},
     {name="蝙蝠",   level=3, hp=40, color={0,0.2,0.8}, speed=80, range=200}
 }
-
+-- BOSS 模板
+local bossTemplate = {
+    name = "魔王",
+    level = 10,
+    hp = 500,      -- 血量厚
+    maxHp = 500,
+    color = {0.8, 0, 0}, -- 深红色
+    speed = 40,
+    range = 300,   -- 警戒范围大
+    isBoss = true, -- 标记为 BOSS
+    attack = 30    -- 基础攻击力
+}
 -- 辅助函数：随机游荡逻辑
 local function updateIdleMovement(monster, dt, Core)
     monster.stateTimer = monster.stateTimer - dt
@@ -63,7 +74,6 @@ local function spawnMonster(tx, ty, tileSize)
         wanderDir = nil
     }
 end
-
 -- === 配置怪物生成器 ===
 local Monster = EntitySpawner.new({
     -- [关键修改 1] 扩大最大生成半径
@@ -154,5 +164,25 @@ local Monster = EntitySpawner.new({
         end
     end
 })
+function Monster.spawnBoss(x, y)
+    local boss = {
+        x = x, y = y,
+        w = 64, h = 64, -- BOSS 体积大一点
+        color = bossTemplate.color,
+        name = bossTemplate.name,
+        level = bossTemplate.level,
+        hp = bossTemplate.maxHp,
+        maxHp = bossTemplate.maxHp,
+        speed = bossTemplate.speed,
+        state = "idle",
+        detectionRange = bossTemplate.range,
+        attack = bossTemplate.attack,
+        isBoss = true, -- 关键标记
+        cooldown = 0,
+        stateTimer = 0
+    }
+    table.insert(Monster.list, boss)
+    return boss
+end
 
 return Monster
