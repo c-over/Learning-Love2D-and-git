@@ -2,7 +2,7 @@
   "0": {
     "name": "未知物品",
     "iconSheet": "assets/icon.png",
-    "iconIndex": 13,
+    "iconIndex": 12,
     "description": "问号，占位测试用",
     "category": "material",
     "usable": false,
@@ -42,18 +42,20 @@
   "4": {
     "name": "锚",
     "iconSheet": "assets/icon.png",
-    "iconIndex": 395,
+    "iconIndex": 394,
     "description": "既是重武器也是投掷物",
     "category": "weapon",
     "slot": "main_hand", 
     "usable": true,
+    "stackable": true,
+    "posable": true,
     "onUse": "dealDamage:50",
     "attack": 15
   },
   "5": {
     "name": "金币",
     "iconSheet": "assets/icon.png",
-    "iconIndex": 131,
+    "iconIndex": 130,
     "description": "货币，可以购买物品",
     "category": "material",
     "usable": false,
@@ -63,7 +65,7 @@
 "6": {
     "name": "铁头盔",
     "iconSheet": "assets/icon.png",
-    "iconIndex": 1905,
+    "iconIndex": 1904,
     "description": "最基础的铁头盔，提供少量防御",
     "category": "equipment",
     "usable": true, 
@@ -76,7 +78,7 @@
   "7": {
     "name": "铁胸甲",
     "iconSheet": "assets/icon.png",
-    "iconIndex": 1921,
+    "iconIndex": 1920,
     "description": "最基础的铁甲，保护躯干",
     "category": "equipment",
     "usable": true,
@@ -89,7 +91,7 @@
   "8": {
     "name": "铁护腿",
     "iconSheet": "assets/icon.png",
-    "iconIndex": 1937,
+    "iconIndex": 1936,
     "description": "最基础的铁护腿，保护腿部",
     "category": "equipment",
     "usable": true,
@@ -102,7 +104,7 @@
     "9": {
     "name": "木盾",
     "iconSheet": "assets/icon.png",
-    "iconIndex": 1809,
+    "iconIndex": 1808,
     "description": "副手装备，增加防御",
     "category": "weapon",
     "slot": "off_hand",
@@ -115,7 +117,7 @@
   "10": {
     "name": "力量戒指",
     "iconSheet": "assets/icon.png",
-    "iconIndex": 1843,
+    "iconIndex": 1842,
     "description": "增加攻击力的饰品",
     "category": "equipment",
     "slot": "accessory",
@@ -128,7 +130,7 @@
     "11": {
     "name": "守护戒指",
     "iconSheet": "assets/icon.png",
-    "iconIndex": 1844,
+    "iconIndex": 1843,
     "description": "增加防御力的饰品",
     "category": "equipment",
     "slot": "accessory",
@@ -141,11 +143,25 @@
     "12": {
     "name": "木材",
     "iconSheet": "assets/icon.png",
-    "iconIndex": 109,
+    "iconIndex": 108,
     "description": "从树上获取的资源，可以制作简单的物品",
     "category": "material",
     "usable": false,
     "stackable": true,
+    "posable": true
+  },
+  "20": {
+    "name": "皇家徽章",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 1810,
+    "description": "击败魔王的证明，佩戴后全属性大幅提升",
+    "category": "equipment",
+    "slot": "accessory",
+    "attack": 20,
+    "defense": 20,
+    "price": 5000,
+    "usable": false,
+    "stackable": false,
     "posable": true
   }
 }
