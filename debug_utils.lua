@@ -24,7 +24,8 @@ Debug.buttons = {
     { text = "清空日志", func = function() Debug.logs = {} end },
     { text = "切换背包", func = function() 
         if currentScene == "inventory" then currentScene = "game" else currentScene = "inventory" end 
-    end }
+    end },
+    {text = "传送至桥梁",func = Debug.teleportToBridge}
 }
 
 local function ensureModules()
@@ -63,37 +64,83 @@ function Debug.drawEntityHitbox(entity, camX, camY)
     love.graphics.setColor(1, 1, 1, 1)
 end
 
--- === [新增] 绘制地图阻挡格 (静态物体：树、墙) ===
+-- === 绘制地图阻挡格 (静态物体：树、墙) ===
 function Debug.drawMapGrid(camX, camY, tileSize, screenW, screenH)
+    local Map = require("map")
     if not Debug.showHitboxes then return end
-    ensureModules()
+    ensureModules() -- 确保 Map 模块已加载
 
-    -- 算出当前屏幕覆盖了哪些格子 (剔除屏幕外的以优化性能)
     local startCol = math.floor(camX / tileSize)
     local endCol   = math.floor((camX + screenW) / tileSize) + 1
     local startRow = math.floor(camY / tileSize)
     local endRow   = math.floor((camY + screenH) / tileSize) + 1
 
-    love.graphics.setColor(1, 0, 0, 0.3) -- 红色半透明表示阻挡
+    love.graphics.setColor(1, 0, 0, 0.4) -- 红色半透明
 
     for r = startRow, endRow do
         for c = startCol, endCol do
-            -- 调用核心逻辑判断该格是否阻挡
-            if Core.isSolidTile(c, r) then
-                local drawX = c * tileSize - camX
-                local drawY = r * tileSize - camY
-                -- 绘制红色方块
-                love.graphics.rectangle("fill", drawX, drawY, tileSize, tileSize)
-                -- 绘制红色边框
-                love.graphics.setColor(1, 0, 0, 0.8)
-                love.graphics.rectangle("line", drawX, drawY, tileSize, tileSize)
-                love.graphics.setColor(1, 0, 0, 0.3)
+            local tile = Map.getTile(c, r)
+            
+            -- [修改] 不再简单的 isSolid，而是获取具体碰撞盒
+            local box = Map.getTileCollision(tile, c, r)
+            
+            if box then
+                -- box 是相对于格子左上角的偏移 {x, y, w, h}
+                local worldX = c * tileSize + box.x
+                local worldY = r * tileSize + box.y
+                
+                local drawX = worldX - camX
+                local drawY = worldY - camY
+                
+                -- 绘制具体的阻挡区域
+                love.graphics.rectangle("fill", drawX, drawY, box.w, box.h)
+                
+                -- 边框
+                love.graphics.setColor(1, 0, 0, 0.9)
+                love.graphics.rectangle("line", drawX, drawY, box.w, box.h)
+                love.graphics.setColor(1, 0, 0, 0.4)
             end
         end
     end
     love.graphics.setColor(1, 1, 1, 1)
 end
-
+-- 寻找并传送到最近的桥
+function Debug.teleportToBridge()
+    local Map = require("map")
+    local Player = require("player")
+    local Game = require("game")
+    
+    local searchRadius = 200 -- 搜索半径 (格)
+    local playerGx = math.floor(Player.data.x / Game.tileSize)
+    local playerGy = math.floor(Player.data.y / Game.tileSize)
+    
+    print("开始搜索桥梁...")
+    
+    -- 我们知道桥只生成在 % 50 的线上，所以只扫描这些线，极大提高搜索效率
+    for r = 0, searchRadius do
+        -- 螺旋或者简单遍历，这里用简单遍历
+        for gx = playerGx - r, playerGx + r do
+            for gy = playerGy - r, playerGy + r do
+                
+                -- 只检查可能生成桥的坐标轴
+                if gx % 50 == 0 or gy % 50 == 0 then
+                    local tile = Map.getTile(gx, gy)
+                    
+                    -- 如果发现了桥梁路面
+                    if tile and string.find(tile, "bridge") then
+                        print(string.format("找到桥梁！坐标: %d, %d (Tile: %s)", gx, gy, tile))
+                        
+                        -- 传送玩家 (稍微偏移一点防止卡在护栏里)
+                        Player.data.x = gx * Game.tileSize
+                        Player.data.y = gy * Game.tileSize
+                        return
+                    end
+                end
+            end
+        end
+    end
+    print("范围内未找到桥梁，请尝试跑远点再试，或者检查生成逻辑。")
+end
 -- === 3. UI 绘制 (布局重构) ===
 function Debug.drawInfo(player, counter)
     if not Debug.showUI then return end

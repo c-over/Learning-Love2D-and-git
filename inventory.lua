@@ -88,7 +88,7 @@ function Inventory:useItem(id, amount, category)
     self:removeItem(id, amount or 1, category)
 end
 
--- [新增] 交换两个物品在总表中的位置
+-- 交换两个物品在总表中的位置
 function Inventory:swapItems(itemA, itemB)
     local list = Config.data.inventory
     local indexA, indexB = nil, nil
@@ -103,6 +103,74 @@ function Inventory:swapItems(itemA, itemB)
         list[indexA], list[indexB] = list[indexB], list[indexA]
         Config.save() -- 交换后立即保存顺序
     end
+end
+
+-- 背包整理 (排序)
+function Inventory:sort()
+    if not Config.data.inventory then return end
+    
+    table.sort(Config.data.inventory, function(a, b)
+        -- 1. 已装备的排在最前面
+        if a.equipSlot and not b.equipSlot then return true end
+        if not a.equipSlot and b.equipSlot then return false end
+        
+        -- 2. 按 ID 排序 (ID通常对应了种类)
+        if a.id ~= b.id then
+            return a.id < b.id
+        end
+        
+        -- 3. 按数量排序
+        return a.count > b.count
+    end)
+    
+    Config.save()
+end
+
+-- 出售重复装备 (保留一件，出售其余)
+-- 返回值: 出售获得的总金币数, 出售的件数
+function Inventory:sellDuplicateEquipment()
+    local inventory = Config.data.inventory
+    local ItemManager = require("ItemManager")
+    local totalGold = 0
+    local soldCount = 0
+    
+    -- 记录已保留的装备ID
+    local keptIds = {}
+    
+    -- 倒序遍历以便安全移除
+    for i = #inventory, 1, -1 do
+        local item = inventory[i]
+        local def = ItemManager.get(item.id)
+        
+        -- 只处理装备和武器
+        if def and (def.category == "equipment" or def.category == "weapon") then
+            -- 如果已装备，强制保留
+            if item.equipSlot then
+                keptIds[item.id] = true
+            else
+                -- 如果之前没遇到过这个ID，且当前也没装备这个ID，则保留这第一件
+                if not keptIds[item.id] then
+                    keptIds[item.id] = true
+                else
+                    -- 已经有了一件(或者身上穿着一件)，这件是多余的 -> 卖掉
+                    -- 卖出价通常是原价的一半
+                    local price = math.floor((def.price or 0) * 0.5)
+                    totalGold = totalGold + price
+                    
+                    table.remove(inventory, i)
+                    soldCount = soldCount + 1
+                end
+            end
+        end
+    end
+    
+    if soldCount > 0 then
+        local Player = require("player")
+        Player.addGold(totalGold)
+        Config.save()
+    end
+    
+    return totalGold, soldCount
 end
 
 return Inventory

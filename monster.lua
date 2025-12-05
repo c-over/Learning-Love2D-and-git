@@ -1,18 +1,60 @@
 local EntitySpawner = require("EntitySpawner")
 local Core = require("core")
 
--- === 1. 定义状态机状态 ===
+-- === 1. 资源加载 ===
+local monsterTextures = {
+    slime = love.graphics.newImage("assets/monsters/slime.png")
+}
+-- === 定义状态机状态 ===
 local STATES = {
-    IDLE     = "idle",
-    CHASE    = "chase",
-    COOLDOWN = "cooldown"
+    IDLE     = "idle",     -- 游荡/发呆
+    CHASE    = "chase",    -- 追逐玩家
+    COOLDOWN = "cooldown"  -- 战后冷却（无敌且不移动）
+}
+-- 辅助函数：生成 Quads
+local function createQuads(image, cols, rows)
+    local quads = {}
+    local iw, ih = image:getDimensions()
+    local w = iw / cols
+    local h = ih / rows
+    for i = 0, cols * rows - 1 do
+        table.insert(quads, love.graphics.newQuad(
+            (i % cols) * w, math.floor(i / cols) * h,
+            w, h, iw, ih
+        ))
+    end
+    return quads, w, h
+end
+
+-- 史莱姆只有1行8列
+local slimeQuads, slimeW, slimeH = createQuads(monsterTextures.slime, 8, 1)
+
+-- 定义动画帧配置 (索引从1开始)
+local ANIMS = {
+    slime = {
+        idle   = {1, 2},       -- 待机
+        walk   = {3, 4, 5},    -- 行走/攻击
+        attack = {3, 4, 5},    -- 攻击
+        hurt   = {6, 7},       -- 受伤
+        die    = {8}           -- 死亡
+    }
 }
 
--- 怪物模板
+-- === 2. 怪物模板配置 ===
 local monsterTypes = {
-    {name="史莱姆", level=1, hp=50, color={0.6,0.6,1}, speed=30, range=100}, 
-    {name="哥布林", level=2, hp=80, color={0,0.8,0.2}, speed=50, range=150},
-    {name="蝙蝠",   level=3, hp=40, color={0,0.2,0.8}, speed=80, range=200}
+    {
+        key="slime", name="史莱姆", level=1, hp=50, 
+        speed=30, range=100, 
+        -- 视觉配置
+        texture=monsterTextures.slime, 
+        quads=slimeQuads, 
+        animData=ANIMS.slime,
+        w=slimeW, h=slimeH,
+        offsetY = -10, -- 贴图修正（脚底对齐）
+        escapeChance = 0.8
+    }, 
+    {name="哥布林", level=2, hp=80, color={0,0.8,0.2}, speed=50, range=150, escapeChance = 0.5},
+    {name="蝙蝠",   level=3, hp=40, color={0,0.2,0.8}, speed=80, range=200, escapeChance = 0.3}
 }
 -- BOSS 模板
 local bossTemplate = {
@@ -24,7 +66,8 @@ local bossTemplate = {
     speed = 40,
     range = 300,   -- 警戒范围大
     isBoss = true, -- 标记为 BOSS
-    attack = 30    -- 基础攻击力
+    attack = 30,    -- 基础攻击力
+    escapeChance = 0
 }
 -- 辅助函数：随机游荡逻辑
 local function updateIdleMovement(monster, dt, Core)
@@ -57,75 +100,82 @@ end
 -- 生成怪物对象
 local function spawnMonster(tx, ty, tileSize)
     local mType = monsterTypes[love.math.random(#monsterTypes)]
-    return {
+    
+    -- 基础属性
+    local monster = {
         x = tx * tileSize,
         y = ty * tileSize,
-        w = 32, h = 32,
+        -- 如果有贴图，使用贴图宽高，否则默认32
+        w = mType.w or 32, 
+        h = mType.h or 32,
         color = mType.color,
         name  = mType.name,
         level = mType.level,
         hp    = mType.hp,
+        maxHp = mType.hp,
         speed = mType.speed,
-        state = STATES.IDLE,
+        state = "idle",
         detectionRange = mType.range,
         cooldown = 0,
         cooldownDuration = 5.0,
         stateTimer = 0,
-        wanderDir = nil
+        wanderDir = nil,
+        
+        -- [新增] 动画状态
+        texture = mType.texture,
+        quads = mType.quads,
+        animConfig = mType.animData,
+        animFrame = 1,
+        animTimer = 0,
+        visualState = "idle", -- 当前播放的动画名
+        offsetY = mType.offsetY or 0
     }
-end
--- === 配置怪物生成器 ===
-local Monster = EntitySpawner.new({
-    -- [关键修改 1] 扩大最大生成半径
-    -- 假设 tileSize=32，30格 = 960像素。这保证了生成范围足够大，包裹住 noSpawnRange
-    radius        = 30,
-
-    -- [关键修改 2] 屏幕安全距离
-    -- 假设屏幕宽800，一半是400。设为450保证在屏幕外生成。
-    -- 现在的有效生成区域是：距离玩家 450像素 到 960像素 之间的圆环区域。
-    noSpawnRange  = 450,
     
-    -- [关键修改 3] 提高密度概率
-    -- 新算法中尝试次数少，需要提高单次成功率。
-    -- 0.1 * 10 = 1.0 (100%)。这意味着只要位置合法（不是墙，不在屏幕内），就一定会生成。
-    density       = 0.12, 
+    -- 如果是BOSS，从这里扩展属性... (略)
+    return monster
+end
 
-    -- [关键修改 4] 加快尝试频率
-    -- 每 0.1 秒尝试生成一次。之前是 1.0 秒太慢了。
-    spawnInterval = 0.1,
-
-    maxNearby     = 10,   -- 屏幕周围最大怪物数
-    maxDistance   = 45,   -- 离多远删除 (要比 radius 大，防止刚生成就删除)
-
-    isSolid = function(tx, ty)
-        return Core.isSolidTile(tx, ty)
-    end,
-
+-- === 3. 配置生成器 ===
+local Monster = EntitySpawner.new({
+    radius = 30, noSpawnRange = 450, density = 0.12, spawnInterval = 0.1, maxNearby = 10, maxDistance = 45,
+    isSolid = function(tx, ty) return Core.isSolidTile(tx, ty) end,
     spawnFunc = spawnMonster,
 
     updateFunc = function(monster, dt, player, tileSize, Core)
         local target = player.data or player
-        if not target or not target.x or not target.y then return end
 
+        -- [安全] 防止 target 为空导致报错 (例如游戏刚开始 player 还没初始化)
+        if not target or not target.x or not target.y then 
+            return 
+        end
+
+        -- 计算与玩家的距离 (使用 target 而不是 player.data)
         local distSq = (monster.x - target.x)^2 + (monster.y - target.y)^2
         local dist = math.sqrt(distSq)
-
+        local isMoving = false
+        -- 状态机逻辑
         if monster.state == STATES.COOLDOWN then
+            -- ... (保持原有逻辑不变)
             monster.cooldown = monster.cooldown - dt
             if monster.cooldown <= 0 then
                 monster.cooldown = 0
                 monster.state = STATES.IDLE
+                print(monster.name .. " 恢复了行动！")
             end
 
         elseif monster.state == STATES.CHASE then
+            -- [追逐状态]
             if dist > monster.detectionRange * 1.5 then
                 monster.state = STATES.IDLE
                 monster.stateTimer = 0
             else
+                -- 这里的 Core.updateMonsterMovement 内部可能也需要 target
+                -- 建议检查 core.lua 或者直接传 target
                 Core.updateMonsterMovement(monster, dt, tileSize, player) 
             end
 
         elseif monster.state == STATES.IDLE then
+            -- [闲逛状态]
             if dist < monster.detectionRange then
                 monster.state = STATES.CHASE
             else
@@ -136,34 +186,85 @@ local Monster = EntitySpawner.new({
         if monster.cooldown > 0 and monster.state ~= STATES.COOLDOWN then
             monster.state = STATES.COOLDOWN
         end
+
+        if monster.state == "cooldown" then
+            monster.cooldown = monster.cooldown - dt
+            if monster.cooldown <= 0 then monster.state = "idle" end
+        elseif monster.state == "chase" then
+            if dist > monster.detectionRange * 1.5 then
+                monster.state = "idle"
+            else
+                Core.updateMonsterMovement(monster, dt, tileSize, player)
+                isMoving = true
+            end
+        elseif monster.state == "idle" then
+            if dist < monster.detectionRange then
+                monster.state = "chase"
+            else
+                updateIdleMovement(monster, dt, Core)
+                -- 简单判断是否有速度
+                if monster.wanderDir then isMoving = true end
+            end
+        end
+        
+        -- [新增] 更新动画帧
+        if monster.texture then
+            local animKey = isMoving and "walk" or "idle"
+            
+            -- 状态切换时重置帧
+            if monster.visualState ~= animKey then
+                monster.visualState = animKey
+                monster.animFrame = 1
+                monster.animTimer = 0
+            end
+            
+            -- 播放动画
+            local frames = monster.animConfig[animKey]
+            monster.animTimer = monster.animTimer + dt
+            if monster.animTimer > 0.2 then -- 0.2秒一帧
+                monster.animTimer = 0
+                monster.animFrame = monster.animFrame + 1
+                if monster.animFrame > #frames then monster.animFrame = 1 end
+            end
+        end
     end,
 
     drawFunc = function(monster, camX, camY)
-        local x, y = monster.x - camX, monster.y - camY
+        local x = monster.x - camX
+        local y = monster.y - camY
         
-        if monster.state == STATES.COOLDOWN then
-            local t = love.timer.getTime()
-            local alpha = (math.floor(t * 5) % 2 == 0) and 0.3 or 0.8
-            love.graphics.setColor(monster.color[1], monster.color[2], monster.color[3], alpha)
-        elseif monster.state == STATES.CHASE then
-            love.graphics.setColor(1, 0, 0, 1)
+        -- 有贴图画贴图
+        if monster.texture and monster.quads then
+            love.graphics.setColor(1, 1, 1)
+            -- 冷却变半透明
+            if monster.state == "cooldown" then 
+                love.graphics.setColor(1, 1, 1, 0.5) 
+            end
+            
+            local frames = monster.animConfig[monster.visualState]
+            local frameIdx = frames[monster.animFrame] or 1
+            local quad = monster.quads[frameIdx]
+            
+            -- 绘制 (水平翻转逻辑可选：根据 vx > 0 或 < 0)
+            -- 这里简化直接画
+            love.graphics.draw(monster.texture, quad, x, y + monster.offsetY)
+            
         else
-            love.graphics.setColor(monster.color)
+            -- 没贴图画方块 (兼容哥布林/蝙蝠)
+            if monster.state == "chase" then love.graphics.setColor(1, 0, 0)
+            elseif monster.state == "cooldown" then love.graphics.setColor(monster.color[1], monster.color[2], monster.color[3], 0.3)
+            else love.graphics.setColor(monster.color) end
+            love.graphics.rectangle("fill", x, y, monster.w, monster.h)
         end
-
-        love.graphics.rectangle("fill", x, y, monster.w, monster.h)
         
+        -- 名字
         love.graphics.setColor(1,1,1)
         love.graphics.print(monster.name, x, y - 20)
-        
-        if monster.state == STATES.CHASE then
-            love.graphics.print("!", x + 10, y - 35)
-        elseif monster.state == STATES.COOLDOWN then
-            local timeLeft = string.format("%.1f", monster.cooldown)
-            love.graphics.print(timeLeft, x + 5, y - 35)
-        end
+        if monster.state == "chase" then love.graphics.print("!", x + 10, y - 35) end
     end
 })
+
+-- (保留 spawnBoss 接口)
 function Monster.spawnBoss(x, y)
     local boss = {
         x = x, y = y,

@@ -29,6 +29,7 @@ table.sort(ItemManager.ids)
 -- 解析 onUse
 local function parseOnUse(def)
     if not def.onUse or type(def.onUse) ~= "string" or def.onUse == "" then return nil end
+    
     local action, valueStr = def.onUse:match("([^:]+):(.+)")
     if not action then action = def.onUse; valueStr = nil end
     local value = tonumber(valueStr) or valueStr
@@ -37,7 +38,12 @@ local function parseOnUse(def)
         if not target then return false end
         local func = target[action]
         if type(func) == "function" then
-            func(value) 
+            -- [核心修改] 获取 Player 函数的返回值
+            local result = func(value) 
+            
+            -- 如果函数明确返回 false (例如满血)，则通过 return false 告知上层失败
+            if result == false then return false end
+            
             return true
         else
             print(string.format("Error: Target missing method '%s'", tostring(action)))
@@ -45,7 +51,6 @@ local function parseOnUse(def)
         end
     end
 end
-
 function ItemManager.get(id)
     local def = ItemManager.definitions[id]
     if def and type(def.onUse) == "string" then
@@ -67,8 +72,12 @@ function ItemManager.use(id, player)
     local def = ItemManager.get(id)
     if not def then return false, "物品不存在" end
     if type(def.onUse) == "function" then
-        def.onUse(player)
-        return true
+        local ok = def.onUse(player) -- [修改] 获取闭包返回值
+        if ok then 
+            return true, "使用了 " .. def.name
+        else
+            return false, "当前无法使用" -- 失败信息
+        end
     else
         return false, "不可使用"
     end

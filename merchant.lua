@@ -32,10 +32,10 @@ function Merchant.draw(camX, camY)
     end
 end
 
-function Merchant.checkCollision(player, aabbOverlap)
+function Merchant.checkCollision(player, _) -- 第二个参数不再需要 aabbOverlap
     for i, npc in ipairs(Merchant.list) do
-        if Core.aabbOverlap(player.x, player.y, player.w, player.h,
-                       npc.x, npc.y, npc.w, npc.h) then
+        -- 判定距离 < 50 像素即可交互
+        if npc.x and Core.getDistance(player, npc) < 60 then
             return npc
         end
     end

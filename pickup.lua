@@ -20,7 +20,11 @@ local definitions = {
         color = {1, 1, 1},
         category = "material"
     },
-    -- 可以在这里加 stone, potion 等
+    stone = {
+        id = 13, 
+        color = {0.6, 0.6, 0.6}, -- 灰色
+        category = "material"
+    },
 }
 
 -- 默认拾取逻辑

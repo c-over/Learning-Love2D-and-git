@@ -79,30 +79,43 @@ function ShopUI.open(merchant)
 end
 
 -- [修改] 获取卖出价格
--- 逻辑：查找 priceTable，如果是商人也在卖的东西，回收价 = 商人售价 * 0.5
+-- 逻辑：优先看商人是否收购(在priceTable里)，如果没有，则读取物品原本价值的一半
 local function getSellPrice(itemId)
-    local merchantPrice = ShopUI.priceTable[itemId]
-    if merchantPrice then
-        return math.floor(merchantPrice * 0.5)
+    -- 1. 如果商人有定价，按商人的半价算 (可选，保持之前的逻辑)
+    if ShopUI.priceTable[itemId] then
+        return math.floor(ShopUI.priceTable[itemId] * 0.5)
     end
-    return 0 -- 如果商人不卖这个东西，回收价为 0（或者你可以设置一个默认底价）
+    
+    -- 2. [修复] 如果商人没货，读取物品基础价格
+    local def = ItemManager.get(itemId)
+    if def and def.price then
+        return math.floor(def.price * 0.5)
+    end
+    
+    return 0 -- 无价之宝，不可出售
 end
 
--- 获取玩家背包中可出售物品
+-- [修改] 获取玩家背包中可出售物品
+-- 逻辑：只要 getSellPrice > 0 且不是重要物品，就可以出现在列表中
 local function getSellableItems()
     local allItems = {}
+    -- 遍历背包所有分类
     for _, category in ipairs(Inventory.categories) do
-        for _, item in ipairs(Inventory.getItemsByCategory(category)) do
+        local items = Inventory.getItemsByCategory(category)
+        for _, item in ipairs(items) do
             local def = ItemManager.get(item.id)
-            -- 排除任务物品和金币本身
-            if def and def.category ~= "key_item" and item.id ~= GOLD_ITEM_ID then
-                table.insert(allItems, item)
+            
+            -- 排除: 1. 关键物品 2. 金币本身 3. 价格为0的物品
+            if def and def.category ~= "key_item" and item.id ~= 5 then
+                local price = getSellPrice(item.id)
+                if price > 0 then
+                    table.insert(allItems, item)
+                end
             end
         end
     end
     return allItems
 end
-
 --------------------------------------------------
 -- 绘制辅助函数
 --------------------------------------------------
@@ -353,6 +366,33 @@ function ShopUI.draw()
         UIGrid.useConfig("shop_sell")
         UIGrid.drawAll(drawSlot, currentItems, UIGrid.hoveredSlotIndex)
         UIGrid.drawScrollbar(#currentItems)
+        -- 一键出售按钮 (仅在卖出页显示)
+        local btnW, btnH = 160, 40
+        local btnX, btnY = Layout.toScreen(100, 80 - 60)
+        local mx, my = love.mouse.getPosition()
+        
+        -- 悬停
+        if mx >= btnX and mx <= btnX + btnW and my >= btnY and my <= btnY + btnH then
+            love.graphics.setColor(0.8, 0.3, 0.3) -- 红色高亮
+            -- 点击检测放在这里简化处理，或者移到 mousepressed
+            if love.mouse.isDown(1) and not ShopUI.sellBtnClicked then
+                ShopUI.sellBtnClicked = true
+                local gold, count = Inventory:sellDuplicateEquipment()
+                if count > 0 then
+                    print("一键出售: " .. count .. "件，获得 " .. gold .. "金币")
+                    -- 这里可以用 GameUI.addFloatText 提示
+                end
+            elseif not love.mouse.isDown(1) then
+                ShopUI.sellBtnClicked = false
+            end
+        else
+            love.graphics.setColor(0.6, 0.2, 0.2) -- 暗红
+        end
+        
+        love.graphics.rectangle("fill", btnX, btnY, btnW, btnH, 5)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.setFont(Fonts.normal)
+        love.graphics.printf("一键出售重复装备", btnX, btnY + 10, btnW, "center")
     end
 
     -- Tooltip
@@ -374,7 +414,6 @@ function ShopUI.draw()
                         desc = desc .. "\n\n(该商人不收购此物品)"
                     end
                 end
-                UIGrid.drawTooltip(desc)
             end
         end
     end
@@ -415,11 +454,15 @@ end
 
 function ShopUI.mousepressed(x, y, button)
     local vx, vy = Layout.toVirtual(x, y)
+    local isShift = love.keyboard.isDown("lshift", "rshift")
 
-    -- 标签页
+    -- 1. 标签页切换
     local tabW, tabH = 100, 35
     local winX, winY = 80, 80
     local tabStartX = winX + 20
+    -- 注意：tabs 变量需要在文件顶部定义，如果提示 nil 请确保 local tabs = {"对话", "买入", "卖出"} 存在
+    local tabs = {"对话", "买入", "卖出"} 
+    
     for i, tab in ipairs(tabs) do
         local tx = tabStartX + (i-1) * (tabW + 5)
         local ty = winY + 15
@@ -431,97 +474,89 @@ function ShopUI.mousepressed(x, y, button)
         end
     end
 
-    -- 按钮
-    local clickedButtonIndex = Layout.mousepressed(x, y, button, ShopUI.buttons)
-    if clickedButtonIndex then return end
-
-        if ShopUI.activeTab == 1 and button == 1 and ShopUI.questBtnRect then
-        local b = ShopUI.questBtnRect
-        if vx >= b.x and vx <= b.x + b.w and vy >= b.y and vy <= b.y + b.h then
-            -- 处理点击逻辑
-            local status = Player.data.questStatus
-            
-            if status == nil then
-                -- 接受任务
-                Player.data.questStatus = "active"
-                -- 添加到任务列表
-                table.insert(Player.data.quests, {
-                    name = "讨伐魔王",
-                    description = "前往 (-50, -1200) 击败魔王，然后向商人回复。",
-                    id = "kill_boss"
-                })
-                -- [关键] 立即生成 BOSS
-                local Monster = require("monster")
-                Monster.spawnBoss(0, -1000) -- 生成在上方
-                print("任务接受，BOSS 已生成！")
-                
-            elseif status == "killed" then
-                -- 交付任务
-                Player.data.questStatus = "completed"
-                -- 发放奖励 (ID 20: 皇家徽章)
-                local Inventory = require("inventory")
-                Inventory:addItem(20, 1, "equipment")
-                
-                -- 更新任务列表描述
-                for _, q in ipairs(Player.data.quests) do
-                    if q.id == "kill_boss" then
-                        q.name = "讨伐魔王 (已完成)"
-                        q.description = "你已经击败了魔王，不仅拯救了村庄，还发了财。"
-                    end
-                end
-                print("任务完成，奖励已发放！")
-            end
-            return -- 阻止穿透
+    -- 2. 底部按钮 (离开商店)
+    if Layout.mousepressed(x, y, button, ShopUI.buttons) then return end
+    
+    -- 3. 一键出售按钮 (仅在卖出页)
+    if ShopUI.activeTab == 3 then
+        -- 重新计算按钮位置 (需与 draw 中的逻辑一致)
+        local winW, winH = Layout.virtualWidth-160, Layout.virtualHeight-140
+        local btnW, btnH = 160, 40
+        local btnX = winX + 20
+        local btnY = winY + winH - 60
+        
+        if vx >= btnX and vx <= btnX + btnW and vy >= btnY and vy <= btnY + btnH then
+             -- 调用 Inventory 的出售重复装备逻辑
+             local gold, count = Inventory:sellDuplicateEquipment()
+             if count > 0 then 
+                 -- 使用 GameUI 飘字 (如果有)
+                 if package.loaded["game_ui"] and package.loaded["game_ui"].addFloatText then
+                     require("game_ui").addFloatText("一键出售: +"..gold, vx, vy, {1,1,0})
+                 else
+                     print("一键出售完成")
+                 end
+             end 
+             return
         end
     end
-    -- 物品买卖
+
+    -- 4. 物品列表交互 (买入/卖出)
     if ShopUI.activeTab == 2 or ShopUI.activeTab == 3 then
         local visualIndex = UIGrid.getIndexAtPosition(vx, vy)
         if visualIndex and button == 1 then
             local itemsList = (ShopUI.activeTab == 2) and ShopUI.merchant.items or getSellableItems()
-            local itemDataIndex = (UIGrid.page - 1) * UIGrid.itemsPerPage + 1 + UIGrid.scrollOffset + visualIndex - 1
+            local itemDataIndex = math.floor(UIGrid.scrollOffset) + visualIndex
             
             local item = itemsList[itemDataIndex]
             if item then
+                local ItemManager = require("ItemManager")
                 local def = ItemManager.get(item.id)
-                if def then
-                    if ShopUI.activeTab == 2 then
-                        -- [买入逻辑]
-                        if Player.data.gold >= item.price then
-                            -- 1. 扣钱，加货
-                            Player.data.gold = Player.data.gold - item.price
+                local amount = isShift and 10 or 1
+                
+                if ShopUI.activeTab == 2 then
+                    -- === [买入逻辑] ===
+                    -- item 来自 merchant.items，包含 {id, price, stock}
+                    local buyPrice = item.price
+                    local successCount = 0
+                    
+                    for i=1, amount do
+                        if Player.data.gold >= buyPrice then
+                            if item.stock and item.stock <= 0 then break end -- 没货了
+                            
+                            Player.data.gold = Player.data.gold - buyPrice
                             Inventory:addItem(item.id, 1, def.category)
                             
-                            -- 2. [关键修改] 库存处理逻辑
-                            if item.stock then
-                                -- 如果有库存限制
-                                item.stock = item.stock - 1
-                                print("购买成功！剩余库存: " .. item.stock)
-                                
-                                -- 如果库存归零，从列表中移除
-                                if item.stock <= 0 then
-                                    table.remove(ShopUI.merchant.items, itemDataIndex)
-                                    -- 防止悬停索引越界，重置一下
-                                    UIGrid.hoveredSlotIndex = nil
-                                    print("商品已售罄！")
-                                end
-                            else
-                                -- 无限库存，不进行 remove 操作
-                                print("购买成功！(无限供应)")
-                            end
-                            
+                            if item.stock then item.stock = item.stock - 1 end
+                            successCount = successCount + 1
                         else
-                            print("金币不足！")
+                            break -- 没钱了
                         end
-                    else
-                        -- [修改] 卖出逻辑
-                        local sellPrice = getSellPrice(item.id)
-                        if sellPrice > 0 then
-                            Player.data.gold = Player.data.gold + sellPrice
-                            Inventory:removeItem(item.id, 1, def.category)
-                        else
-                            -- 可以在这里加个提示音：商人不收这个
-                            print("商人不收购此物品")
+                    end
+                    
+                    if successCount > 0 and package.loaded["game_ui"] then
+                         require("game_ui").addFloatText("购买成功 -"..(buyPrice*successCount), vx, vy, {1,0.8,0})
+                    end
+                    
+                    -- 如果库存归零，可能需要刷新列表 (可选)
+                    -- 但因为 itemsList 是引用，draw 会自动更新显示
+                    
+                else
+                    -- === [卖出逻辑] ===
+                    -- item 来自 Inventory，结构为 {id, count}
+                    -- [核心修复] 使用 getSellPrice 获取单价，而不是 item.price
+                    local unitSellPrice = getSellPrice(item.id)
+                    
+                    -- 能够卖出的数量不能超过拥有的数量
+                    local canSellCount = math.min(amount, item.count)
+                    
+                    if canSellCount > 0 and unitSellPrice > 0 then
+                        local totalEarn = unitSellPrice * canSellCount
+                        
+                        Player.data.gold = Player.data.gold + totalEarn
+                        Inventory:removeItem(item.id, canSellCount, def.category)
+                        
+                        if package.loaded["game_ui"] then
+                            require("game_ui").addFloatText("卖出 +"..totalEarn, vx, vy, {1,1,0})
                         end
                     end
                 end

@@ -7,7 +7,8 @@ local defaultData = {
     player = {
         name = "Hero", level = 1, hp = 100, maxHp = 100, mp = 50, maxMp = 50,
         exp = 0, attack = 10, defense = 5, speed = 200, gold = 100,
-        respawnX = nil, respawnY = nil, x = 0, y = 0
+        respawnX = nil, respawnY = nil, x = 0, y = 0, seedX = nil, seedY = nil,
+        deathCount = 0 
     },
     inventory = {} 
 }
@@ -79,6 +80,8 @@ function Config.load()
         for k, v in pairs(loaded.player) do
             Config.data.player[k] = v
         end
+        if not Config.data.player.seedX then Config.data.player.seedX = nil end
+        if not Config.data.player.seedY then Config.data.player.seedY = nil end
     end
 
     -- 2. 恢复设置

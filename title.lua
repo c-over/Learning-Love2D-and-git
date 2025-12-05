@@ -1,8 +1,6 @@
 -- title.lua
 local Layout = require("layout")
 local Settings = require("settings")
-local InventoryUI = require("inventory_ui")
-
 local Title = {}
 
 local selectedIndex = nil
@@ -56,10 +54,12 @@ local function refreshButtonList()
     if debugMode then
         table.insert(Title.buttons, {
             x = startX, y = startY + gap * 3, w = btnW, h = btnH,
-            text = "Debug: 直接进背包",
+            -- [修改] 按钮文字和回调
+            text = "素材/资产查看器",
             onClick = function()
-                InventoryUI.previousScene = currentScene
-                currentScene = "inventory"
+                local AssetViewer = require("AssetViewer")
+                AssetViewer.load() -- 加载资源
+                currentScene = "asset_viewer"
             end
         })
     end
@@ -140,7 +140,7 @@ function Title.draw()
         end
 
         -- 4. 版本号
-        local version = "v0.1.1"
+        local version = "v0.1.3"
         love.graphics.setFont(Fonts.small)
         love.graphics.setColor(0.7, 0.7, 0.7, 0.8)
         love.graphics.print(version, w - 150, h - 30)

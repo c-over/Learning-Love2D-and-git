@@ -27,15 +27,6 @@ local function updateButtons()
     InventoryUI.buttons = {
         {x=300, y=530, w=120, h=40, text="返回游戏", onClick=function() currentScene=InventoryUI.previousScene or "game" end}
     }
-    if debugMode then
-        table.insert(InventoryUI.buttons, {
-            x=440, y=530, w=140, h=40, text="图标浏览器", 
-            onClick=function() 
-                require("IconBrowser") -- 确保加载
-                currentScene="icon_browser" 
-            end
-        })
-    end
 end
 
 -- 绘制描边文字的辅助函数
