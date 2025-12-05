@@ -1,29 +1,47 @@
-[
-    {
-        "id": 1,
-        "name": "火球术",
-        "cost": 10,
-        "type": "damage",
-        "power": 20,
-        "effect": "fireball", 
-        "description": "对敌人造成火焰伤害"
-    },
-    {
-        "id": 2,
-        "name": "治愈术",
-        "cost": 15,
-        "type": "heal",
-        "power": 30,
-        "effect": "heal_sparkle",
-        "description": "恢复自身生命值"
-    },
-    {
-        "id": 3,
-        "name": "雷击",
-        "cost": 25,
-        "type": "damage",
-        "power": 45,
-        "effect": "lightning",
-        "description": "强力的雷电攻击"
-    }
-]
+{
+  "1": {
+    "name": "治疗术",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 669,
+    "description": "消耗MP恢复生命值，可在菜单使用",
+    "mp": 10,
+    "level": 1,
+    "type": "heal",
+    "power": 30,
+    "menuUsable": true
+  },
+  "2": {
+    "name": "火球术",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 762,
+    "description": "对敌人造成火焰伤害",
+    "mp": 15,
+    "level": 2,
+    "type": "damage",
+    "power": 40,
+    "effect": "fire", 
+    "menuUsable": false
+  },
+  "3": {
+    "name": "隐身术",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 1076,
+    "description": "短时间内不会被怪物发现 (未实装)",
+    "mp": 20,
+    "level": 5,
+    "type": "buff",
+    "menuUsable": true
+  },
+  "4": {
+    "name": "终极爆裂",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 767,
+    "description": "究极魔法，毁灭一切",
+    "mp": 100,
+    "level": 10,
+    "type": "damage",
+    "power": 200,
+    "effect": "fire", 
+    "menuUsable": false
+  }
+}

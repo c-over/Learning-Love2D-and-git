@@ -56,11 +56,12 @@
     "name": "金币",
     "iconSheet": "assets/icon.png",
     "iconIndex": 130,
-    "description": "货币，可以购买物品",
+    "description": "货币，使用可以转换为金钱",
     "category": "material",
-    "usable": false,
+    "usable": true,
     "stackable": true,
-    "posable": true
+    "posable": true,
+    "onUse": "addGold:10"
   },
 "6": {
     "name": "铁头盔",
@@ -115,13 +116,13 @@
     "posable": true
   },
   "10": {
-    "name": "力量戒指",
+    "name": "生命戒指",
     "iconSheet": "assets/icon.png",
-    "iconIndex": 1842,
-    "description": "增加攻击力的饰品",
+    "iconIndex": 1845,
+    "description": "蕴含生命力的戒指，大幅提升最大生命值",
     "category": "equipment",
     "slot": "accessory",
-    "attack": 5,
+    "maxHp": 50, 
     "price": 300,
     "usable": false,
     "stackable": false,
@@ -148,6 +149,42 @@
     "category": "material",
     "usable": false,
     "stackable": true,
+    "posable": true
+  },
+  "13": {
+    "name": "石头",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 314,
+    "description": "从矿石中获取的资源，可以制作简单的物品，可能还有别的用处？",
+    "category": "material",
+    "usable": false,
+    "stackable": true,
+    "posable": true
+  },
+  "14": {
+    "name": "木斧",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 1543,
+    "description": "将石头绑在木头上，可以用来砍树",
+    "category": "weapon",
+    "slot": "main_hand",
+    "attack": 5,
+    "price": 50,
+    "usable": true,
+    "stackable": false,
+    "posable": true
+  },
+    "15": {
+    "name": "镐",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 1537,
+    "description": "简易的镐子，可以用来挖掘矿石",
+    "category": "weapon",
+    "slot": "main_hand",
+    "attack": 3,
+    "price": 60,
+    "usable": true,
+    "stackable": false,
     "posable": true
   },
   "20": {
