@@ -20,8 +20,8 @@ local function initDefaults()
     Player.data.gold   = Player.data.gold or 100
     Player.data.equipment = Player.data.equipment or {}
     Player.data.quests = Player.data.quests or {}
-    -- 确保 deathCount 存在
-    if not Player.data.deathCount then Player.data.deathCount = 0 end
+    Player.data.buffs  = Player.data.buffs or {}
+    Player.data.deathCount = Player.data.deathCount or 0
 end
 
 function Player.save()
@@ -33,6 +33,7 @@ function Player.load()
     local saveData = Config.get()
     Player.data = saveData.player or {}
     initDefaults()
+    cleanupDuplicateQuests()
 end
 
 -- === 2. 核心逻辑 ===
@@ -195,5 +196,123 @@ function Player.getToolEfficiency(targetType)
     end
     return speed
 end
+-- 任务接口
+-- 清理重复任务 (修复坏档)
+function cleanupDuplicateQuests()
+    if not Player.data.quests then return end
+    
+    local seen = {}
+    -- 倒序遍历以便安全移除
+    for i = #Player.data.quests, 1, -1 do
+        local q = Player.data.quests[i]
+        if seen[q.id] then
+            -- 如果已经见过这个ID，说明当前这个是重复的（或者是旧的），移除
+            table.remove(Player.data.quests, i)
+            print("[Player] 移除了重复任务: " .. q.id)
+        else
+            seen[q.id] = true
+        end
+    end
+end
+function Player.addOrUpdateQuest(id, name, description)
+    -- 1. 检查是否已存在
+    for _, q in ipairs(Player.data.quests) do
+        if q.id == id then
+            -- 存在则更新内容 (例如从"进行中"更新为"已完成")
+            q.name = name
+            q.description = description
+            return -- 退出，不添加新条目
+        end
+    end
+    
+    -- 2. 不存在则新增
+    table.insert(Player.data.quests, {
+        id = id,
+        name = name,
+        description = description
+    })
+end
+--BUFF接口
+function Player.addBuff(id, duration, turns, value)
+    initDefaults()
+    -- 如果已有，刷新时间；如果没有，新增
+    Player.data.buffs[id] = {
+        timer = duration,   -- 地图模式持续时间 (秒)
+        turns = turns,      -- 战斗模式持续回合
+        val = value or 0,   -- 强度 (如毒伤害值)
+        tickTimer = 0       -- 用于地图上的持续扣血计时
+    }
+    print("获得 Buff: " .. id)
+end
 
+function Player.removeBuff(id)
+    if Player.data.buffs[id] then
+        Player.data.buffs[id] = nil
+        print("Buff 消失: " .. id)
+    end
+end
+
+function Player.hasBuff(id)
+    return Player.data.buffs and Player.data.buffs[id] ~= nil
+end
+
+-- 3. [新增] 地图模式下的 Buff 更新 (在 Game.update 调用)
+function Player.updateBuffs(dt)
+    if not Player.data.buffs then return end
+    local GameUI = require("game_ui") -- 用于飘字
+
+    for id, buff in pairs(Player.data.buffs) do
+        -- 计时减少
+        buff.timer = buff.timer - dt
+        
+        -- 中毒逻辑 (地图模式：每 2 秒扣一次血)
+        if id == "poison" then
+            buff.tickTimer = buff.tickTimer + dt
+            if buff.tickTimer >= 2.0 then
+                buff.tickTimer = 0
+                Player.takeDamage(buff.val)
+                -- 飘字
+                if GameUI.addFloatText then
+                    GameUI.addFloatText("中毒 -"..buff.val, Player.data.x, Player.data.y - 40, {0.6, 0, 0.8})
+                end
+                -- 屏幕闪烁红色提示 (可选)
+            end
+        end
+
+        -- 过期移除
+        if buff.timer <= 0 then
+            Player.removeBuff(id)
+            if GameUI.addFloatText then
+                GameUI.addFloatText(id.." 结束", Player.data.x, Player.data.y - 60, {1, 1, 1})
+            end
+        end
+    end
+end
+
+-- 4. [新增] 战斗模式下的 Buff 结算 (在 Battle 回合开始调用)
+-- 返回 true 表示因 Buff 死亡
+function Player.handleBattleTurnBuffs()
+    local GameUI = require("game_ui")
+    local died = false
+    
+    for id, buff in pairs(Player.data.buffs) do
+        -- 扣除回合数
+        if buff.turns then
+            buff.turns = buff.turns - 1
+            
+            -- 中毒结算
+            if id == "poison" then
+                Player.takeDamage(buff.val)
+                GameUI.addFloatText("中毒 -"..buff.val, 120, 400, {0.6, 0, 0.8}) -- 战斗UI位置
+                if Player.data.hp <= 0 then died = true end
+            end
+            
+            -- 回合结束移除
+            if buff.turns <= 0 then
+                Player.removeBuff(id)
+            end
+        end
+    end
+    return died
+end
 return Player

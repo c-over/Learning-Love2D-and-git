@@ -149,6 +149,7 @@ function UIGrid.drawAll(drawFunc, items, hoveredSlotIndex)
 
     for i = 1, UIGrid.itemsPerPage do
         local vx, vy, vw, vh = UIGrid.getSlotRect(i)
+        Layout.drawDebugBox(vx, vy, vw, vh)
         local sx, sy = Layout.toScreen(vx, vy)
         local sw, sh = Layout.toScreen(vw, vh)
         

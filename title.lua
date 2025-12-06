@@ -140,7 +140,7 @@ function Title.draw()
         end
 
         -- 4. 版本号
-        local version = "v0.1.3"
+        local version = "v0.1.4"
         love.graphics.setFont(Fonts.small)
         love.graphics.setColor(0.7, 0.7, 0.7, 0.8)
         love.graphics.print(version, w - 150, h - 30)

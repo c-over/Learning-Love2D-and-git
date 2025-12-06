@@ -3,6 +3,7 @@ local Player = require("player")
 local Layout = require("layout")
 local Config = require("config")
 local ItemManager = require("ItemManager")
+local MagicManager = require("MagicManager")
 local Inventory = require("inventory")
 
 -- === 状态 ===
@@ -25,7 +26,10 @@ local COLORS = {
     text    = {1, 1, 1, 1},
     shadow  = {0, 0, 0, 0.8}
 }
-
+local BUFF_ICON_MAP = {
+    ["invisible"] = 3, -- 隐身术 ID
+    ["poison"]    = 5  -- 毒咒术 ID
+}
 function GameUI.load() end
 
 -- === 飘字系统 ===
@@ -137,29 +141,40 @@ function GameUI.drawFloatTexts()
 end
 -- === 绘制状态栏 ===
 local function drawStatusBar()
+    -- 1. 基础布局参数
     local vX = Layout.virtualWidth - statusBarW - statusMargin
     local vY = statusMargin
-    local totalH = statusBarH * 3 + 10 * 2 + 10 
+    -- 容器高度：3个条(26) + 2个间距(8) + 内边距(10)
+    local containerH = statusBarH * 3 + 8 * 2 + 10 
     
     local sX, sY = Layout.toScreen(vX, vY)
     local sW, sH = Layout.toScreen(statusBarW, statusBarH)
-    local sContainerH = select(2, Layout.toScreen(0, totalH))
+    local sContainerH = select(2, Layout.toScreen(0, containerH))
     local _, sGap = Layout.toScreen(0, 8) 
     local _, sPad = Layout.toScreen(0, 5)
 
+    -- 2. 绘制主状态栏背景
     love.graphics.setColor(0, 0, 0, 0.4)
     love.graphics.rectangle("fill", sX - sPad, sY - sPad, sW + sPad*2, sContainerH, 10, 10)
 
+    -- 3. 绘制 HP/MP/EXP 条
     local function drawBar(label, cur, max, color, index)
         local drawY = sY + (index - 1) * (sH + sGap)
+        
+        -- 底槽
         love.graphics.setColor(COLORS.bg_bar)
         love.graphics.rectangle("fill", sX, drawY, sW, sH, 6, 6)
+        
+        -- 进度
         local ratio = math.max(0, math.min(cur / max, 1))
         love.graphics.setColor(color)
         love.graphics.rectangle("fill", sX, drawY, sW * ratio, sH, 6, 6)
+        
+        -- 高光装饰
         love.graphics.setColor(1, 1, 1, 0.2)
         love.graphics.rectangle("fill", sX, drawY, sW * ratio, sH * 0.4, 6, 6)
 
+        -- 文字
         local font = Fonts.medium or love.graphics.getFont()
         love.graphics.setFont(font)
         local text = string.format("%d / %d", math.floor(cur), math.floor(max))
@@ -167,9 +182,13 @@ local function drawStatusBar()
         
         local tx = sX + 10
         local ty = drawY + (sH - font:getHeight())/2 - 2
+        
+        -- 文字阴影
         love.graphics.setColor(COLORS.shadow)
         love.graphics.print(label, tx + 1, ty + 1)
         love.graphics.printf(text, sX, ty + 1, sW - 10, "right")
+
+        -- 文字本体
         love.graphics.setColor(COLORS.text)
         love.graphics.print(label, tx, ty)
         love.graphics.printf(text, sX, ty, sW - 10, "right")
@@ -179,13 +198,147 @@ local function drawStatusBar()
     drawBar("MP", Player.data.mp, Player.data.maxMp, COLORS.mp, 2)
     local nextLevelExp = Player.data.level * 100
     drawBar("EXP", Player.data.exp, nextLevelExp, COLORS.exp, 3)
+    
+    -- === [修改] 绘制 Buff 列表 (使用图标) ===
+    if Player.data.buffs then
+        -- 容器高度计算保持不变，这里直接从 Buff 绘制开始
+        local containerH = statusBarH * 3 + 8 * 2 + 10
+        local buffStartY = statusMargin + containerH + 5 
+        local buffH = 24                       
+        local buffGap = 4                      
+        local count = 0
+        
+        for id, buff in pairs(Player.data.buffs) do
+            if buff.timer > 0 then
+                local currentY = buffStartY + count * (buffH + buffGap)
+                
+                local bsx, bsy = Layout.toScreen(Layout.virtualWidth - statusBarW - statusMargin, currentY)
+                local bsw, bsh = Layout.toScreen(statusBarW, buffH)
+                
+                -- A. 背景
+                love.graphics.setColor(0, 0, 0, 0.6)
+                love.graphics.rectangle("fill", bsx, bsy, bsw, bsh, 4)
+                
+                -- B. [核心修改] 绘制图标
+                local magicId = BUFF_ICON_MAP[id]
+                local iconDrawn = false
+                
+                if magicId then
+                    local img, quad = MagicManager.getIcon(magicId)
+                    if img then
+                        love.graphics.setColor(1, 1, 1)
+                        
+                        -- 计算缩放：让图标适应 buffH 的高度 (留一点边距)
+                        local iconTargetSize = bsh - 4
+                        local iw, ih
+                        if quad then _,_,iw,ih = quad:getViewport() else iw,ih = img:getWidth(), img:getHeight() end
+                        
+                        local scale = iconTargetSize / ih
+                        
+                        if quad then
+                            love.graphics.draw(img, quad, bsx + 2, bsy + 2, 0, scale, scale)
+                        else
+                            love.graphics.draw(img, bsx + 2, bsy + 2, 0, scale, scale)
+                        end
+                        iconDrawn = true
+                    end
+                end
+                
+                -- 兜底：如果没找到图标，还是画个色块
+                if not iconDrawn then
+                    local c = {0.5, 0.5, 0.5}
+                    if id == "poison" then c = {0.8, 0.2, 0.8} end
+                    love.graphics.setColor(c)
+                    love.graphics.rectangle("fill", bsx + 4, bsy + 4, bsh - 8, bsh - 8, 2)
+                end
+                
+                -- C. 文字信息
+                local buffName = id
+                if id == "invisible" then buffName = "隐身"
+                elseif id == "poison" then buffName = "中毒" end
+                
+                love.graphics.setColor(1, 1, 1)
+                love.graphics.setFont(Fonts.small or love.graphics.getFont())
+                
+                -- 文字左对齐 (避开图标)
+                love.graphics.print(buffName, bsx + bsh + 5, bsy + 5)
+                
+                -- 倒计时右对齐
+                local timeStr = string.format("%.1fs", buff.timer)
+                love.graphics.printf(timeStr, bsx, bsy + 5, bsw - 5, "right")
+                
+                count = count + 1
+            end
+        end
+    end
+
+    love.graphics.setColor(1, 1, 1)
+end
+-- 绘制任务指引箭头
+local function drawQuestGuide()
+    local StoryManager = require("StoryManager")
+    local step = StoryManager.getVar("boss_quest_step")
+    
+    if step ~= 1 then return end
+    
+    local Monster = require("monster")
+    local boss = nil
+    for _, m in ipairs(Monster.list) do
+        if m.isBoss then boss = m; break end
+    end
+    
+    if not boss then return end 
+    
+    -- 计算相对位置 (世界坐标)
+    local px, py = Player.data.x, Player.data.y
+    local dx = boss.x - px
+    local dy = boss.y - py
+    local dist = math.sqrt(dx*dx + dy*dy)
+    
+    -- 距离判断
+    if dist < Layout.virtualWidth / 2 then return end
+    
+    -- === [核心修复] 计算屏幕中心 ===
+    
+    -- 1. 获取虚拟分辨率的中心 (400, 300)
+    local vCx = Layout.virtualWidth / 2
+    local vCy = Layout.virtualHeight / 2
+    
+    -- 2. 计算角度
+    local angle = math.atan2(dy, dx)
+    
+    -- 3. 计算箭头在虚拟坐标系下的位置 (半径设为虚拟高度的 40%)
+    local vRadius = math.min(Layout.virtualWidth, Layout.virtualHeight) * 0.4
+    local vArrowX = vCx + math.cos(angle) * vRadius
+    local vArrowY = vCy + math.sin(angle) * vRadius
+    
+    -- 4. [关键] 将虚拟位置转换为屏幕实际位置进行绘制
+    local sArrowX, sArrowY = Layout.toScreen(vArrowX, vArrowY)
+    
+    -- === 绘制 ===
+    local font = Fonts.medium or love.graphics.getFont()
+    love.graphics.setFont(font)
+    
+    love.graphics.push()
+    love.graphics.translate(sArrowX, sArrowY) -- 使用转换后的屏幕坐标
+    love.graphics.rotate(angle) 
+    
+    love.graphics.setColor(1, 0, 0, 0.8) 
+    love.graphics.polygon("fill", 10, 0, -10, 5, -10, -5) 
+    
+    love.graphics.pop()
+    
+    local distText = math.floor(dist / 32) .. "m" 
+    love.graphics.setColor(1, 1, 1)
+    -- 文字也要画在转换后的坐标旁
+    love.graphics.print(distText, sArrowX - 10, sArrowY + 15)
     love.graphics.setColor(1, 1, 1)
 end
 
 -- === 主绘制 ===
 function GameUI.draw()
     drawStatusBar()
-    
+    drawQuestGuide()
     local w = Layout.virtualWidth
     local h = Layout.virtualHeight
     local totalW = HOTBAR_SLOTS * (SLOT_SIZE + SLOT_MARGIN)

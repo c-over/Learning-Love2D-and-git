@@ -67,15 +67,30 @@ end
 
 function Inventory:removeItem(id, count, category)
     if not Config.data.inventory then return end
+    local Player = require("player") -- 引入 Player 模块以便刷新状态
     
     for i = #Config.data.inventory, 1, -1 do
         local item = Config.data.inventory[i]
         if item.id == id then
             if item.count > count then
                 item.count = item.count - count
+                -- 只是减少数量，不需要卸下
             else
+                -- 数量归零，即将移除
+                -- [核心修复] 如果该物品被装备了，必须先清理装备状态！
+                if item.equipSlot then
+                    -- 1. 清理 Player.data.equipment 中的引用
+                    if Player.data.equipment then
+                        Player.data.equipment[item.equipSlot] = nil
+                    end
+                    -- 2. 触发属性重算 (这会彻底清除装备加成并更新 UI 状态)
+                    Player.recalcStats()
+                end
+                
+                -- 从背包移除
                 table.remove(Config.data.inventory, i)
             end
+            
             Config.save()
             return
         end

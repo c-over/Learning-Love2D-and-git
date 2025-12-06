@@ -1,6 +1,7 @@
 local Layout = require("layout")
 local Inventory = require("inventory")
 local ItemManager = require("ItemManager")
+local StoryManager = require("StoryManager")
 local Player = require("player")
 local UIGrid = require("UIGrid")
 
@@ -307,23 +308,23 @@ function ShopUI.draw()
         love.graphics.setColor(0, 0, 0, 0.3)
         love.graphics.rectangle("fill", sRectX, sRectY, sRectW, sRectH, 5, 5)
         
-        -- === [核心] 任务逻辑判断 ===
-        -- 任务状态存储在 Player.data.questStatus 中
-        -- nil: 未接, "active": 进行中, "killed": 已杀BOSS, "completed": 已交任务
-        local status = Player.data.questStatus
-        local dialogue = "欢迎光临！看看有什么需要的吗？"
+        -- 使用变量控制剧情
+        -- 0:未接, 1:进行中, 2:已击杀, 3:已完成
+        local step = StoryManager.getVar("boss_quest_step")
+        
+        local dialogue = ""
         local btnText = nil
         
-        if status == nil then
-            dialogue = "最近北方的森林里出现了一个魔王，搞得人心惶惶。\n勇士，你能帮我去消灭它吗？"
+        if step == 0 then
+            dialogue = StoryManager.getText("merchant.greet_quest_start")
             btnText = "接受任务"
-        elseif status == "active" then
-            dialogue = "魔王非常强大，请务必小心。它就在北边的森林深处。\n打败它后记得回来找我。"
-        elseif status == "killed" then
-            dialogue = "天哪！你真的做到了！\n这是传说中的【皇家徽章】，请收下它作为谢礼。"
+        elseif step == 1 then
+            dialogue = StoryManager.getText("merchant.greet_quest_active")
+        elseif step == 2 then
+            dialogue = StoryManager.getText("merchant.greet_quest_killed")
             btnText = "交付任务"
-        elseif status == "completed" then
-            dialogue = "感谢你，伟大的英雄！你永远是本店的贵宾。"
+        elseif step >= 3 then
+            dialogue = StoryManager.getText("merchant.greet_quest_done")
         end
         
         -- 绘制对话文本
@@ -473,7 +474,45 @@ function ShopUI.mousepressed(x, y, button)
             return
         end
     end
-
+        -- 任务按钮 (对话页)
+    if ShopUI.activeTab == 1 and button == 1 and ShopUI.questBtnRect then
+        local b = ShopUI.questBtnRect
+        -- vx, vy 是通过 Layout.toVirtual(x, y) 获取的
+        if vx >= b.x and vx <= b.x + b.w and vy >= b.y and vy <= b.y + b.h then
+            
+            local step = StoryManager.getVar("boss_quest_step")
+            
+            if step == 0 then
+                -- 接受任务
+                StoryManager.setVar("boss_quest_step", 1)
+                
+                -- [修改] 使用安全接口添加任务
+                Player.addOrUpdateQuest(
+                    "kill_boss", -- ID
+                    StoryManager.getText("quest.boss_title"), -- Name
+                    StoryManager.getText("quest.boss_desc_start") -- Desc
+                )
+                
+                local Monster = require("monster")
+                Monster.spawnBoss(0, -3200)
+                print("任务接受")
+                
+            elseif step == 2 then
+                -- 交付任务
+                StoryManager.setVar("boss_quest_step", 3)
+                local Inventory = require("inventory")
+                Inventory:addItem(20, 1, "equipment")
+                
+                -- [修改] 使用安全接口更新任务描述
+                Player.addOrUpdateQuest(
+                    "kill_boss",
+                    StoryManager.getText("quest.boss_title") .. " (完成)",
+                    StoryManager.getText("quest.boss_desc_done")
+                )
+                print("任务完成")
+            end
+        end
+    end
     -- 2. 底部按钮 (离开商店)
     if Layout.mousepressed(x, y, button, ShopUI.buttons) then return end
     

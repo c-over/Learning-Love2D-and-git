@@ -54,7 +54,29 @@ function Layout.draw(title, infoLines, buttons, selectedIndex)
 
     love.graphics.setColor(1, 1, 1)
 end
+-- [新增] 调试绘制接口
+-- 用于在 debug 模式下可视化逻辑判定区域
+-- x, y, w, h: 虚拟坐标
+function Layout.drawDebugBox(x, y, w, h)
+    if not debugMode then return end -- 依赖全局 debugMode 变量
 
+    local sx, sy = Layout.toScreen(x, y)
+    local sw, sh = Layout.toScreen(w, h)
+
+    love.graphics.push("all") -- 保存当前绘图状态
+    love.graphics.setLineWidth(2)
+    
+    -- 绘制红色边框
+    love.graphics.setColor(1, 0, 0, 0.8)
+    love.graphics.rectangle("line", sx, sy, sw, sh)
+    
+    -- 绘制对角线 (X形)，表示这是一个交互区域
+    love.graphics.setColor(1, 0, 0, 0.3)
+    love.graphics.line(sx, sy, sx + sw, sy + sh)
+    love.graphics.line(sx, sy + sh, sx + sw, sy)
+    
+    love.graphics.pop()
+end
 function Layout.mousemoved(x, y, buttons)
     x, y = Layout.toVirtual(x, y)
     local index = nil
@@ -73,6 +95,7 @@ function Layout.mousepressed(x, y, button, buttons)
     for i, btn in ipairs(buttons) do
         if x >= btn.x and x <= btn.x + btn.w and
            y >= btn.y and y <= btn.y + btn.h then
+            if PlayButtonSound then PlayButtonSound() end
             if btn.onClick then
                 return btn.onClick()
             else

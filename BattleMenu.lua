@@ -49,7 +49,16 @@ BattleMenu.cachedItems = {}
 BattleMenu.cachedSpells = {}  
 BattleMenu.cachedEquips = {}  
 BattleMenu.tooltip = nil
-
+-- [新增] 简单的闪白 Shader 代码
+local flashShaderCode = [[
+    extern number intensity;
+    vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords) {
+        vec4 texcolor = Texel(texture, texture_coords);
+        // 将原色与白色混合，intensity 控制混合程度 (0~1)
+        return mix(texcolor, vec4(1,1,1,texcolor.a), intensity) * color;
+    }
+]]
+local flashShader -- Shader 对象
 -- === 初始化 ===
 function BattleMenu.init(enemyPayload, enemyIndex, onResolve)
     BattleMenu.state.phase = "idle"
@@ -60,7 +69,10 @@ function BattleMenu.init(enemyPayload, enemyIndex, onResolve)
     BattleMenu.state.isDefending = false
     BattleMenu.state.animResetTimer = 0
     BattleMenu.state.activeTab = "item"
-
+        -- [新增] 初始化 Shader
+    if not flashShader then
+        flashShader = love.graphics.newShader(flashShaderCode)
+    end
     -- 初始化敌人
     BattleMenu.state.enemy = {
         name = enemyPayload.name,
@@ -69,6 +81,7 @@ function BattleMenu.init(enemyPayload, enemyIndex, onResolve)
         maxHp = enemyPayload.maxHp or 50,
         attack = enemyPayload.attack,
         isBoss = enemyPayload.isBoss,
+        aiType = enemyPayload.aiType,
         escapeChance = (enemyPayload.isBoss and 0) or (enemyPayload.escapeChance or 0.5),
         
         -- 视觉数据
@@ -76,7 +89,8 @@ function BattleMenu.init(enemyPayload, enemyIndex, onResolve)
         quads = enemyPayload.quads,       -- 如果是静态图，这里可能是 nil
         animConfig = enemyPayload.animConfig, -- 同上
         visualState = "idle", animFrame = 1, animTimer = 0,
-        w = enemyPayload.w or 32, h = enemyPayload.h or 32
+        w = enemyPayload.w or 32, h = enemyPayload.h or 32,
+        flashTimer = 0, 
     }
     
     BattleMenu.state.enemyIndex = enemyIndex
@@ -291,8 +305,15 @@ function BattleMenu.draw()
         -- 在游戏区域正中心绘制
         local cx, cy = w/2, gameH/2
         love.graphics.setColor(1,1,1)
+        -- 应用闪白特效
+        if enemy.flashTimer > 0 then
+            love.graphics.setShader(flashShader)
+            -- 根据时间计算强度，产生一闪一闪的效果，或者持续高亮
+            flashShader:send("intensity", 0.8) 
+        end
         
-        -- [核心修复] 怪物绘制三级判定
+        love.graphics.setColor(1,1,1)
+        -- 怪物绘制三级判定
         if enemy.texture then
             -- 1. 优先检查是否有动画帧配置 (Quads)
             if enemy.quads and enemy.animConfig then
@@ -316,6 +337,7 @@ function BattleMenu.draw()
             love.graphics.setColor(1,0,0)
             love.graphics.rectangle("fill", cx-32, cy-32, 64, 64)
         end
+        love.graphics.setShader()
         
         -- 绘制怪物血条 (跟随震动)
         drawDynamicBar(enemy, 0, cy + 80, "hp", false)

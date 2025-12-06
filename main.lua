@@ -13,6 +13,7 @@ local Inventory = require("inventory")
 local PauseMenu = require("PauseMenu")
 local BattleMenu = require("BattleMenu")
 local ItemManager = require("ItemManager")
+local EffectManager = require("EffectManager")
 Fonts = {}
 -- === [新增] 转场系统 ===
 local Transition = {
@@ -77,6 +78,13 @@ function love.load()
 
     Layout.resize(love.graphics.getWidth(), love.graphics.getHeight()) 
 
+    buttonSound = love.audio.newSource("assets/sounds/button.wav", "static")
+    -- 全局播放函数 (会自动处理并发播放)
+    function PlayButtonSound()
+        if buttonSound then
+            buttonSound:clone():play()
+        end
+    end
     coinSound = love.audio.newSource("assets/sounds/coin.wav", "static")
     bgMusic = love.audio.newSource("assets/sounds/title.mp3", "stream")
     bgMusic:setLooping(true)
@@ -93,7 +101,9 @@ function love.load()
     GameOver.load()
     PauseMenu.load()
     Crafting.load()
+    EffectManager.load()
     ItemManager.preloadAll() -- 强制预加载所有图标
+    require("StoryManager").load()
 
     currentScene = "title"
     Title.load()
@@ -114,6 +124,8 @@ function love.update(dt)
     -- [关键修复] 无论在哪个场景，都必须更新 UI 逻辑
     -- 这使得飘字 (Floating Text) 的 y 轴位置和 life 透明度能正常变化
     require("game_ui").update(dt)
+    EffectManager.update(dt)
+    Player.updateBuffs(dt)
     -- 3. 场景更新
     if currentScene == "title" then
         Title.update(dt)
@@ -140,6 +152,7 @@ function love.draw()
     elseif currentScene == "battle" then
         Game.draw()
         BattleMenu.draw()
+        EffectManager.draw(0, 0)
     elseif currentScene == "shop" then
         ShopUI.draw()
     elseif currentScene == "gameover" then
@@ -169,6 +182,14 @@ function love.draw()
         -- 传入 player 数据和 timer
         local pData = (currentScene == "game" or currentScene == "player") and Player.data or nil
         Debug.drawInfo(pData, love.timer.getTime())
+    end
+    -- 如果要在地图探索模式下显示特效 (例如砍树火花)，需要获取 camX
+    local camX, camY = 0, 0
+    if currentScene == "game" and Game.player then
+        local p = Game.player
+        local w, h = love.graphics.getDimensions()
+        camX = p.x - w/2
+        camY = p.y - h/2
     end
     -- 3. [关键] 飘字绘制 (必须放在所有场景绘制之后，转场遮罩之前)
     if currentScene ~= "boot" then

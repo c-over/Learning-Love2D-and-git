@@ -72,7 +72,7 @@ function MagicManager.cast(spellId, target)
     if def.type == "heal" then
         if target.hp >= target.maxHp then return false, "生命值已满" end
         target.hp = math.min(target.hp + def.power, target.maxHp)
-        Player.data.mp = Player.data.mp - def.mp -- 扣蓝
+        Player.data.mp = Player.data.mp - def.mp
         return true, "恢复了 " .. def.power .. " 点生命"
         
     elseif def.type == "damage" then
@@ -80,9 +80,14 @@ function MagicManager.cast(spellId, target)
         return false, "只能在战斗中使用"
         
     elseif def.type == "buff" then
-        -- 这里写 Buff 逻辑
-        Player.data.mp = Player.data.mp - def.mp
-        return true, "释放了 " .. def.name
+        if def.buffId == "invisible" then
+            -- 隐身术特殊处理：战斗中通常无效
+            -- 但既然是通用接口，我们先加上
+            Player.addBuff("invisible", def.duration, 0, 0)
+            Player.data.mp = Player.data.mp - def.mp
+            return true, "进入隐身状态！"
+        else return false, "BUFF加载失败"
+        end
     end
     
     return false, "未知效果"

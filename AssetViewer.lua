@@ -2,51 +2,46 @@ local AssetViewer = {}
 local Layout = require("layout")
 local UIGrid = require("UIGrid")
 local ItemManager = require("ItemManager")
+local EffectManager = require("EffectManager") -- [新增] 引用特效管理器
 
 -- === 状态管理 ===
-AssetViewer.currentMode = "icons_source" -- 默认打开新功能方便调试
-AssetViewer.sidebarWidth = 140 -- 稍微加宽一点
+AssetViewer.currentMode = "items" -- items, tiles, anims, fonts, effects
+AssetViewer.sidebarWidth = 140
 
 -- === 模式配置 ===
 local modes = {
-    { key = "icons_source", text = "图标图集 (Source)" }, -- [新增]
+    { key = "icons_source", text = "图标图集 (Source)" },
     { key = "items",        text = "已定义物品" },
     { key = "tiles",        text = "地图素材" },
     { key = "anims",        text = "角色动画" },
+    { key = "effects",      text = "特效预览" },
     { key = "fonts",        text = "字体预览" }
 }
 
 -- === 子模块状态 ===
-
--- 1. [新增] 图标源文件查看状态
-local IconSheetState = {
-    img = nil,
-    camX = 0, camY = 0,
-    scale = 1,
-    gridSize = 64, -- [关键] 这里设定为 64
-    info = ""
-}
-
--- 2. TileSelector 状态
-local TileState = {
-    img = nil,
-    camX = 0, camY = 0,
-    scale = 2,
-    tileSize = 16, padding = 1,
-    info = ""
-}
-
--- 3. Items 状态
+local IconSheetState = { img = nil, camX = 0, camY = 0, scale = 1, gridSize = 64, info = "" }
+local TileState = { img = nil, camX = 0, camY = 0, scale = 2, tileSize = 16, padding = 1, info = "" }
 local ItemState = { ids = {} }
-
--- 4. Animation 状态
 local AnimState = { list = {}, timer = 0 }
-
+-- [重构] 特效预览状态
+local EffectState = { 
+    keys = {},            -- 特效名称列表
+    selectedKey = nil,    -- 当前选中的特效
+    previewData = nil,    -- 缓存的数据 (img, quads)
+    
+    timer = 0,            -- 循环计时器
+    currentFrame = 1,     -- 当前帧
+    
+    -- 颜色控制器 (RGB: 0~1)
+    r = 1, g = 1, b = 1,
+    
+    -- 布局
+    listScroll = 0
+}
 -- === 初始化 ===
 function AssetViewer.load()
-    -- 1. 加载 Items 数据
+    -- 1. 加载 Items
     ItemState.ids = ItemManager.getAllIds()
-    
     local winW, winH = Layout.virtualWidth, Layout.virtualHeight
     local gridW = winW - AssetViewer.sidebarWidth - 40
     local startX = AssetViewer.sidebarWidth + 20
@@ -54,21 +49,19 @@ function AssetViewer.load()
     local cols = math.floor(gridW / (slotSize + 10))
     
     UIGrid.config("asset_items", {
-        cols = cols, rows = 6,
-        slotSize = slotSize, margin = 8,
+        cols = cols, rows = 6, slotSize = slotSize, margin = 8,
         startX = startX, startY = 60
     })
 
-    -- 2. 加载 Tile 数据
+    -- 2. 加载 Tiles
     if love.filesystem.getInfo("assets/tiles.png") then
         TileState.img = love.graphics.newImage("assets/tiles.png")
         TileState.img:setFilter("nearest", "nearest")
     end
 
-    -- 3. [新增] 加载 Icon Source 数据
+    -- 3. 加载 Icons
     if love.filesystem.getInfo("assets/icon.png") then
         IconSheetState.img = love.graphics.newImage("assets/icon.png")
-        -- 这里不一定要 nearest，看图标风格，通常像素风需要
         IconSheetState.img:setFilter("nearest", "nearest") 
     end
 
@@ -103,7 +96,6 @@ function AssetViewer.load()
     -- 假设 Player 图片结构：3行 (下, 上, 右)，每行 4 帧
     -- 这里的参数根据你的实际素材调整：cols=4, rows=3
     AnimState.list = {
-        -- 史莱姆 (单行，8帧)
         { 
             name = "史莱姆", 
             img = slimeImg, 
@@ -125,14 +117,30 @@ function AssetViewer.load()
             w = 32, h = 32, frame = 1, max = 6, speed = 0.15 
         }
     }
-end
 
+    -- 4. Effects
+    EffectManager.load()
+    EffectState.keys = EffectManager.getAllKeys()
+end
+function AssetViewer.selectEffect(key)
+    EffectState.selectedKey = key
+    EffectState.previewData = EffectManager.getData(key)
+    EffectState.timer = 0
+    EffectState.currentFrame = 1
+    
+    -- [新增] 选中时立即播放
+    if EffectState.previewData and EffectState.previewData.sfx then
+        local d = EffectState.previewData
+        d.sfx:stop()
+        if d.def.soundStart then d.sfx:seek(d.def.soundStart) end
+        d.sfx:play()
+    end
+end
 -- === 更新逻辑 ===
 function AssetViewer.update(dt)
     local speed = 300
     if love.keyboard.isDown("lshift") then speed = 800 end
 
-    -- 通用摄像机控制 (针对 tiles 和 icons_source)
     if AssetViewer.currentMode == "tiles" then
         if love.keyboard.isDown("w", "up") then TileState.camY = TileState.camY - speed * dt end
         if love.keyboard.isDown("s", "down") then TileState.camY = TileState.camY + speed * dt end
@@ -151,6 +159,31 @@ function AssetViewer.update(dt)
             local frame = math.floor(AnimState.timer / anim.speed) % anim.max + 1
             anim.frame = frame
         end
+        
+    -- 特效循环更新
+    elseif AssetViewer.currentMode == "effects" then
+        local data = EffectState.previewData
+        if data then
+            EffectState.timer = EffectState.timer + dt
+            local frameDuration = data.duration / data.frames
+            
+            if EffectState.timer >= frameDuration then
+                EffectState.timer = EffectState.timer - frameDuration
+                EffectState.currentFrame = EffectState.currentFrame + 1
+                
+                -- [关键修改] 循环播放
+                if EffectState.currentFrame > data.frames then
+                    EffectState.currentFrame = 1
+                    
+                    -- [新增] 每一轮循环重新播放音效
+                    if data.sfx then
+                        data.sfx:stop()
+                        if data.def.soundStart then data.sfx:seek(data.def.soundStart) end
+                        data.sfx:play()
+                    end
+                end
+            end
+        end
     end
 end
 
@@ -167,14 +200,9 @@ function AssetViewer.draw()
     local btnH = 40
     for i, mode in ipairs(modes) do
         local y = 60 + (i-1) * (btnH + 10)
-        
-        if AssetViewer.currentMode == mode.key then
-            love.graphics.setColor(0.2, 0.6, 1, 0.8)
-        else
-            love.graphics.setColor(0.3, 0.3, 0.3, 0.5)
-        end
+        if AssetViewer.currentMode == mode.key then love.graphics.setColor(0.2, 0.6, 1, 0.8)
+        else love.graphics.setColor(0.3, 0.3, 0.3, 0.5) end
         love.graphics.rectangle("fill", 10, y, AssetViewer.sidebarWidth - 20, btnH, 5)
-        
         love.graphics.setColor(1, 1, 1)
         love.graphics.setFont(Fonts.normal)
         love.graphics.printf(mode.text, 10, y + 10, AssetViewer.sidebarWidth - 20, "center")
@@ -188,6 +216,7 @@ function AssetViewer.draw()
     elseif AssetViewer.currentMode == "icons_source" then AssetViewer.drawIconSheet()
     elseif AssetViewer.currentMode == "anims" then AssetViewer.drawAnims()
     elseif AssetViewer.currentMode == "fonts" then AssetViewer.drawFonts()
+    elseif AssetViewer.currentMode == "effects" then AssetViewer.drawEffects()
     end
     
     love.graphics.setScissor()
@@ -199,7 +228,131 @@ end
 
 -- --- 子绘制函数 ---
 
--- [新增] 绘制图标源文件
+-- 绘制 RGB 滑动条辅助函数
+local function drawSlider(label, value, x, y, w)
+    local h = 20
+    -- 标签
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.print(label, x, y)
+    
+    -- 轨道
+    local tx = x + 20
+    local tw = w - 20
+    love.graphics.setColor(0.3, 0.3, 0.3)
+    love.graphics.rectangle("fill", tx, y+6, tw, 8, 4)
+    
+    -- 滑块
+    local bx = tx + value * tw
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.circle("fill", bx, y+10, 8)
+    
+    -- 数值
+    love.graphics.print(string.format("%.2f", value), tx + tw + 10, y)
+    
+    return {x=tx, y=y, w=tw, h=h} -- 返回交互区域
+end
+
+-- 特效预览界面
+function AssetViewer.drawEffects()
+    local startX = AssetViewer.sidebarWidth + 20
+    local startY = 60
+    local winW = Layout.virtualWidth - AssetViewer.sidebarWidth - 40
+    
+    love.graphics.setColor(1, 0.8, 0.2)
+    love.graphics.setFont(Fonts.large)
+    love.graphics.print("特效调试器", startX, 20)
+    
+    -- A. 左侧列表
+    local listW = 200
+    local listH = Layout.virtualHeight - 100
+    
+    love.graphics.setColor(0.1, 0.1, 0.1, 0.5)
+    love.graphics.rectangle("fill", startX, startY, listW, listH)
+    love.graphics.setColor(0.5, 0.5, 0.5)
+    love.graphics.rectangle("line", startX, startY, listW, listH)
+    
+    local itemH = 35
+    love.graphics.setScissor(startX, startY, listW, listH)
+    for i, key in ipairs(EffectState.keys) do
+        local y = startY + (i-1)*itemH - EffectState.listScroll
+        if y + itemH > startY and y < startY + listH then
+            if key == EffectState.selectedKey then love.graphics.setColor(0.2, 0.6, 1, 0.6)
+            else love.graphics.setColor(0.2, 0.2, 0.2) end
+            love.graphics.rectangle("fill", startX+2, y+2, listW-4, itemH-4)
+            
+            love.graphics.setColor(1, 1, 1)
+            love.graphics.setFont(Fonts.normal)
+            love.graphics.print(key, startX+10, y+8)
+        end
+    end
+    love.graphics.setScissor()
+    
+    -- B. 右侧预览区
+    local previewX = startX + listW + 40
+    local previewY = startY
+    local previewW = 300
+    local previewH = 300
+    
+    -- 绘制棋盘格背景 (Checkerboard) 表示透明
+    love.graphics.setScissor(previewX, previewY, previewW, previewH)
+    local checkSize = 20
+    for cx = 0, previewW, checkSize do
+        for cy = 0, previewH, checkSize do
+            if (cx/checkSize + cy/checkSize) % 2 == 0 then love.graphics.setColor(0.2, 0.2, 0.2)
+            else love.graphics.setColor(0.25, 0.25, 0.25) end
+            love.graphics.rectangle("fill", previewX+cx, previewY+cy, checkSize, checkSize)
+        end
+    end
+    love.graphics.setScissor()
+    
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.rectangle("line", previewX, previewY, previewW, previewH)
+    
+    -- 绘制当前特效 (循环播放)
+    local data = EffectState.previewData
+    if data and data.img then
+        local cx = previewX + previewW/2
+        local cy = previewY + previewH/2
+        local q = data.quads[EffectState.currentFrame]
+        if q then
+            local _, _, w, h = q:getViewport()
+            -- 放大显示
+            local scale = 3
+            
+            -- 混合模式
+            local oldBlend = love.graphics.getBlendMode()
+            love.graphics.setBlendMode("add")
+            
+            -- 应用颜色
+            love.graphics.setColor(EffectState.r, EffectState.g, EffectState.b, 1)
+            
+            love.graphics.draw(data.img, q, cx, cy, 0, scale, scale, w/2, h/2)
+            
+            love.graphics.setBlendMode(oldBlend)
+        end
+    end
+    
+    -- C. 颜色控制条 (在预览窗下方)
+    local sliderY = previewY + previewH + 20
+    local sliderW = previewW
+    
+    -- 我们只在这里绘制，具体的交互检测在 mousepressed/mousemoved 里
+    -- 为了方便，我们记录区域到 State
+    EffectState.sliderR = drawSlider("R", EffectState.r, previewX, sliderY, sliderW)
+    love.graphics.setColor(EffectState.r, 0, 0); love.graphics.rectangle("fill", previewX+sliderW+50, sliderY+6, 20, 20)
+    
+    EffectState.sliderG = drawSlider("G", EffectState.g, previewX, sliderY + 30, sliderW)
+    love.graphics.setColor(0, EffectState.g, 0); love.graphics.rectangle("fill", previewX+sliderW+50, sliderY+36, 20, 20)
+    
+    EffectState.sliderB = drawSlider("B", EffectState.b, previewX, sliderY + 60, sliderW)
+    love.graphics.setColor(0, 0, EffectState.b); love.graphics.rectangle("fill", previewX+sliderW+50, sliderY+66, 20, 20)
+    
+    -- 最终合成色展示
+    love.graphics.setColor(EffectState.r, EffectState.g, EffectState.b)
+    love.graphics.rectangle("fill", previewX+sliderW+50, sliderY+100, 40, 40)
+    love.graphics.setColor(1,1,1); love.graphics.rectangle("line", previewX+sliderW+50, sliderY+100, 40, 40)
+end
+-- 绘制图标源文件
 function AssetViewer.drawIconSheet()
     local ts = IconSheetState
     if not ts.img then 
@@ -254,7 +407,6 @@ function AssetViewer.drawIconSheet()
     love.graphics.print("点击复制 Index 到剪贴板", AssetViewer.sidebarWidth + 10, 65)
 end
 
--- 物品模式
 function AssetViewer.drawItems()
     UIGrid.useConfig("asset_items")
     UIGrid.drawAll(function(idx, x, y, w, h, state)
@@ -295,9 +447,7 @@ end
 
 -- B. 地图模式
 function AssetViewer.drawTiles()
-    local ts = TileState
-    if not ts.img then return end
-    
+    local ts = TileState; if not ts.img then return end
     love.graphics.push()
     love.graphics.translate(AssetViewer.sidebarWidth, 0)
     love.graphics.translate(-ts.camX, -ts.camY)
@@ -327,7 +477,6 @@ function AssetViewer.drawTiles()
     love.graphics.print(ts.info, AssetViewer.sidebarWidth + 10, 20)
 end
 
--- C. 动画模式
 function AssetViewer.drawAnims()
     local startX = AssetViewer.sidebarWidth + 50
     local startY = 100
@@ -384,6 +533,7 @@ function AssetViewer.mousepressed(x, y, button)
         end
     end
     
+    -- 1. 特效预览点击
     if AssetViewer.currentMode == "items" then
         if button == 1 then
             local vx, vy = Layout.toVirtual(x, y)
@@ -398,8 +548,34 @@ function AssetViewer.mousepressed(x, y, button)
                 end
             end
         end
+    -- 特效交互
+    elseif AssetViewer.currentMode == "effects" then
+        -- 1. 列表点击
+        local listW = 200
+        local listH = Layout.virtualHeight - 100
+        local startX = AssetViewer.sidebarWidth + 20
+        local startY = 60
+        local itemH = 35
+        
+        if x >= startX and x <= startX + listW and y >= startY and y <= startY + listH then
+            local idx = math.floor((y - startY + EffectState.listScroll) / itemH) + 1
+            local key = EffectState.keys[idx]
+            if key then AssetViewer.selectEffect(key) end
+        end
+        
+        -- 2. 滑动条点击 (也支持拖拽)
+        local function checkSlider(prop, rect)
+            if rect and x >= rect.x and x <= rect.x + rect.w and y >= rect.y and y <= rect.y + rect.h then
+                local val = (x - rect.x) / rect.w
+                EffectState[prop] = math.max(0, math.min(val, 1))
+            end
+        end
+        checkSlider("r", EffectState.sliderR)
+        checkSlider("g", EffectState.sliderG)
+        checkSlider("b", EffectState.sliderB)
     
-    -- [新增] 图标源文件点击
+    
+    -- 2. 图标点击 (Source)
     elseif AssetViewer.currentMode == "icons_source" then
         if button == 1 then
             local ts = IconSheetState
@@ -418,7 +594,6 @@ function AssetViewer.mousepressed(x, y, button)
                 print("Copied Icon Index: " .. index)
             end
         end
-        
     elseif AssetViewer.currentMode == "tiles" then
         if button == 1 then
             local ts = TileState
@@ -432,6 +607,21 @@ function AssetViewer.mousepressed(x, y, button)
                 local code = string.format("{ x=%d, y=%d },", col, row)
                 love.system.setClipboardText(code)
                 print("Copied Tile: " .. code)
+            end
+        end
+    -- 3. 物品点击 (Items)
+    elseif AssetViewer.currentMode == "items" then
+        if button == 1 then
+            local vx, vy = Layout.toVirtual(x, y)
+            if UIGrid.checkScrollbarPress(vx, vy, #ItemState.ids) then return end
+            local idx = UIGrid.getIndexAtPosition(vx, vy)
+            if idx then
+                local realIdx = math.floor(UIGrid.scrollOffset) + idx
+                local id = ItemState.ids[realIdx]
+                if id then
+                    love.system.setClipboardText(tostring(id))
+                    print("Copied Item ID: " .. id)
+                end
             end
         end
     end
@@ -449,6 +639,9 @@ function AssetViewer.wheelmoved(x, y)
         local ts = IconSheetState
         if y > 0 then ts.scale = math.min(5, ts.scale + 0.2)
         elseif y < 0 then ts.scale = math.max(0.2, ts.scale - 0.2) end
+    elseif AssetViewer.currentMode == "effects" then
+        -- 滚动列表
+        EffectState.listScroll = math.max(0, EffectState.listScroll - y * 30)
     end
 end
 
@@ -460,6 +653,16 @@ function AssetViewer.mousemoved(x, y, dx, dy)
         else
             UIGrid.hoveredSlotIndex = UIGrid.getIndexAtPosition(Layout.toVirtual(x, y))
         end
+    elseif AssetViewer.currentMode == "effects" and love.mouse.isDown(1) then
+        local function updateSlider(prop, rect)
+            if rect and x >= rect.x - 20 and x <= rect.x + rect.w + 20 and y >= rect.y - 10 and y <= rect.y + rect.h + 10 then
+                local val = (x - rect.x) / rect.w
+                EffectState[prop] = math.max(0, math.min(val, 1))
+            end
+        end
+        updateSlider("r", EffectState.sliderR)
+        updateSlider("g", EffectState.sliderG)
+        updateSlider("b", EffectState.sliderB)
     end
 end
 

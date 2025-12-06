@@ -4,6 +4,7 @@ local Layout = require("layout")
 local Player = require("player")
 local Inventory = require("inventory")
 local ItemManager = require("ItemManager")
+local MagicManager = require("MagicManager")
 local UIGrid = require("UIGrid")
 local Crafting = require("Crafting")
 local Config = require("config")
@@ -71,7 +72,26 @@ local function getCurrentList()
     end
     return {}
 end
-
+-- 魔法列表布局配置
+-- 统一管理 x, y, w, h，防止手写数字导致的偏差
+local function getSkillLayout()
+    -- 假设面板在右侧，避开左侧 Sidebar
+    local listX = 160
+    local listY = 60
+    -- 宽度要减去左侧 Sidebar 和右侧边距
+    local listW = Layout.virtualWidth - listX - 20 
+    local listH = Layout.virtualHeight - 100
+    
+    return {
+        x = listX,
+        y = listY,
+        w = listW,
+        h = listH,
+        itemH = 70,    -- 单项高度
+        gap = 10,      -- 间距
+        headerH = 50   -- 标题栏高度
+    }
+end
 local function getStatDiff(targetItem)
     local diff = { attack = 0, defense = 0 }
     local def = ItemManager.get(targetItem.id)
@@ -169,8 +189,9 @@ local function createSlotRenderer(items)
             love.graphics.rectangle("line", x+2, y+2, w-4, h-4)
         end
         local img, quad = ItemManager.getIcon(item.id)
+        love.graphics.setColor(1, 1, 1, 1)
         if img then
-            love.graphics.setColor(1, 1, 1)
+
             local iw, ih
             if quad then _,_,iw,ih = quad:getViewport() else iw,ih = img:getWidth(), img:getHeight() end
             local s = math.min(w/iw, h/ih) * 0.85
@@ -413,51 +434,67 @@ local function drawCraftTab()
 end
 
 local function drawSkillTab() 
-    local MagicManager = require("MagicManager")
     local spells = MagicManager.getPlayerSpells()
-    local listX, listY = 160, 60
-    local listW, listH = WIN_W - 140
-    local sx, sy = Layout.toScreen(listX, listY)
-    local sw, sh = Layout.toScreen(listW, WIN_H - 80)
+    
+    local L = getSkillLayout() -- [关键] 获取统一布局
+    
+    local sx, sy = Layout.toScreen(L.x, L.y)
+    local sw, sh = Layout.toScreen(L.w, L.h)
+    
     love.graphics.setColor(1, 1, 1)
     love.graphics.setFont(Fonts.large)
     love.graphics.print("魔法技能 (Lv." .. Player.data.level .. ")", sx, sy)
-    love.graphics.setScissor(sx, sy+40, sw, sh-40)
-    local startY = sy + 50 - PauseMenu.skillScroll
-    local itemH = 70
+    
+    -- 裁剪区域
+    local _, sHeaderH = Layout.toScreen(0, L.headerH - 10)
+    love.graphics.setScissor(sx, sy + sHeaderH, sw, sh - sHeaderH)
+    
+    local startY = L.y + L.headerH - PauseMenu.skillScroll
+    
     for i, spell in ipairs(spells) do
-        local dy = startY + (i-1) * (itemH + 10)
-        if dy + itemH > sy and dy < sy + sh then
+        local dy = startY + (i-1) * (L.itemH + L.gap)
+        
+        -- 仅绘制可见部分
+        if dy + L.itemH > L.y and dy < L.y + L.h then
+            
+            -- [新增] 绘制逻辑判定框 (Debug)
+            -- 这里的 L.x 和 L.w 是虚拟坐标，完全对应下面的点击判定
+            Layout.drawDebugBox(L.x, dy, L.w, L.itemH)
+            
             local mx, my = love.mouse.getPosition()
-            local itemW = sw - 20
-            local isHover = (mx >= sx and mx <= sx + itemW and my >= dy and my <= dy + itemH)
+            local dsx, dsy = Layout.toScreen(L.x, dy)
+            local dsw, dsh = Layout.toScreen(L.w, L.itemH)
+            
+            -- 屏幕坐标检测悬停 (视觉效果)
+            local isHover = (mx >= dsx and mx <= dsx + dsw and my >= dsy and my <= dsy + dsh)
+            
             if isHover then love.graphics.setColor(1, 1, 1, 0.15) else love.graphics.setColor(0, 0, 0, 0.3) end
-            love.graphics.rectangle("fill", sx, dy, itemW, itemH, 5)
+            love.graphics.rectangle("fill", dsx, dsy, dsw, dsh, 5)
             love.graphics.setColor(1, 1, 1, 0.2)
-            love.graphics.rectangle("line", sx, dy, itemW, itemH, 5)
-            love.graphics.setColor(1, 1, 1)
+            love.graphics.rectangle("line", dsx, dsy, dsw, dsh, 5)
+            love.graphics.setColor(1, 1, 1, 1) 
             local img, quad = MagicManager.getIcon(spell.id)
             local iconSize = select(2, Layout.toScreen(0, 48))
             if img then
                 local s = iconSize / (quad and select(3, quad:getViewport()) or img:getWidth())
-                if quad then love.graphics.draw(img, quad, sx+10, dy+10, 0, s, s) else love.graphics.draw(img, sx+10, dy+10, 0, s, s) end
+                if quad then love.graphics.draw(img, quad, dsx+10, dsy+10, 0, s, s) else love.graphics.draw(img, dsx+10, dsy+10, 0, s, s) end
             end
             love.graphics.setFont(Fonts.medium)
             love.graphics.setColor(1,1,1)
-            love.graphics.print(spell.name, sx+70, dy+5)
+            love.graphics.print(spell.name, dsx+70, dsy+5)
             love.graphics.setFont(Fonts.small)
             love.graphics.setColor(0.4, 0.6, 1)
-            love.graphics.print("MP: " .. spell.mp, sx+70, dy+35)
+            love.graphics.print("MP: " .. spell.mp, dsx+70, dsy+35)
             love.graphics.setColor(0.7, 0.7, 0.7)
-            love.graphics.printf(spell.description, sx+160, dy+12, itemW-260, "left")
+            love.graphics.printf(spell.description, dsx+160, dsy+12, dsw-260, "left")
             if spell.menuUsable then
                 love.graphics.setFont(Fonts.normal)
                 love.graphics.setColor(isHover and {0,1,0} or {0,0.7,0})
-                love.graphics.print("[点击使用]", sx+itemW-100, dy+25)
+                love.graphics.print("[点击使用]", dsx+dsw-100, dsy+25)
             else
                 love.graphics.setFont(Fonts.small)
                 love.graphics.setColor(0.5, 0.5, 0.5)
-                love.graphics.print("[战斗限定]", sx+itemW-100, dy+25)
+                love.graphics.print("[战斗限定]", dsx+dsw-100, dsy+25)
             end
         end
     end
@@ -565,6 +602,7 @@ function PauseMenu.mousepressed(x, y, button)
         local bx = 30
         local by = 40 + (i-1) * 60
         if vx >= bx and vx <= bx + SIDEBAR_W - 20 and vy >= by and vy <= by + 40 then
+            PlayButtonSound()
             if btn.key == "exit" then Config.save(); currentScene = "title"; return end
             PauseMenu.activeTab = btn.key
             UIGrid.scrollOffset = 0
@@ -595,6 +633,7 @@ function PauseMenu.mousepressed(x, y, button)
         for i, title in ipairs(itemTabs) do
             local tx = tabStartX + (i-1) * 90
             if vx >= tx and vx <= tx + 80 and vy >= tabY and vy <= tabY + 30 then
+                PlayButtonSound()
                 PauseMenu.itemSubTab = i; UIGrid.scrollOffset = 0; UIGrid.hideActionMenu(); return
             end
         end
@@ -603,6 +642,7 @@ function PauseMenu.mousepressed(x, y, button)
         if PauseMenu.sortBtnRect then
             local b = PauseMenu.sortBtnRect
             if vx>=b.x and vx<=b.x+b.w and vy>=b.y and vy<=b.y+b.h then
+                PlayButtonSound()
                 Inventory:sort()
                 if GameUI.addFloatText then GameUI.addFloatText("背包已整理", tipX, tipY, {0,1,0}) end
                 return
@@ -758,6 +798,7 @@ function PauseMenu.mousepressed(x, y, button)
             local displayList = PauseMenu.visibleRecipes or {}
             
             if index > 0 and index <= #displayList then
+                PlayButtonSound()
                 local recipe = displayList[index]
                 local loop = isShift and 5 or 1
                 local success = 0
@@ -783,33 +824,49 @@ function PauseMenu.mousepressed(x, y, button)
         
     -- 5. 魔法页 (Skill Tab)
     elseif PauseMenu.activeTab == "skill" then
-        local listX, listY = 160, 60
-        if vx > listX then
-            local MagicManager = require("MagicManager")
+        local L = getSkillLayout() -- [关键] 获取统一布局
+        
+        -- 1. 区域判定：是否点在列表范围内
+        if vx > L.x and vx < L.x + L.w and vy > L.y + L.headerH and vy < L.y + L.h then
             local spells = MagicManager.getPlayerSpells()
-            local startY = listY + 50 - PauseMenu.skillScroll
-            local itemH = 80
-            if vy > listY + 50 and vy < WIN_H - 20 then
-               local index = math.floor((vy - startY) / itemH) + 1
-               if index > 0 and index <= #spells then
-                   local spell = spells[index]
-                   if spell.menuUsable then
-                       local ok, msg = MagicManager.cast(spell.id, Player.data)
-                       if ok then
-                           -- [修复] 技能成功：飘字在玩家头顶(世界坐标) + 回到游戏
+            
+            -- 2. 索引计算
+            local startY = L.y + L.headerH - PauseMenu.skillScroll
+            local unitH = L.itemH + L.gap
+            
+            -- (鼠标Y - 列表起始Y) / 单行高度
+            local index = math.floor((vy - startY) / unitH) + 1
+            
+            if index > 0 and index <= #spells then
+                    PlayButtonSound()
+               local spell = spells[index]
+                   -- [情况 A] 可以在菜单使用 (如治疗、Buff)
+               if spell.menuUsable then
+                   local ok, msg = MagicManager.cast(spell.id, Player.data)
+                   if ok then
+                           -- 1. 成功: 切换回游戏，飘字显示在玩家头顶 (世界坐标)
                            if GameUI.addFloatText then 
-                               GameUI.addFloatText(msg, Player.data.x, Player.data.y-40, {0,1,0}) 
+                               -- 传玩家的世界坐标
+                               GameUI.addFloatText(msg, Player.data.x, Player.data.y - 40, {0,1,0}) 
                            end
-                           currentScene = "game"
-                       else
-                           -- 技能失败：飘字在鼠标处 + 留住菜单
+                       currentScene = "game"
+                   else
+                           -- 2. 失败 (如满血): 留在菜单，飘字显示在鼠标位置 (虚拟坐标)
                            if GameUI.addFloatText then 
+                               -- 传鼠标点击位置
                                GameUI.addFloatText(msg, vx, vy, {1,0,0}) 
                            end
+                   end
+                       
+                   -- [情况 B] 不可在菜单使用 (如火球)
+                   else
+                       -- [新增] 补充提示，不再沉默
+                       if GameUI.addFloatText then 
+                           GameUI.addFloatText("仅战斗可用", vx, vy, {0.6, 0.6, 0.6}) 
                        end
                    end
                end
-            end
+            
         end
     end
 end

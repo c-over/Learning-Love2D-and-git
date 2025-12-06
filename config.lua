@@ -8,7 +8,7 @@ local defaultData = {
         name = "Hero", level = 1, hp = 100, maxHp = 100, mp = 50, maxMp = 50,
         exp = 0, attack = 10, defense = 5, speed = 200, gold = 100,
         respawnX = nil, respawnY = nil, x = 0, y = 0, seedX = nil, seedY = nil,
-        deathCount = 0 
+        deathCount = 0 , progress = {}
     },
     inventory = {} 
 }

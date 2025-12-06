@@ -119,9 +119,8 @@ function Game.load()
         for _, m in ipairs(Monster.list) do if m.isBoss then hasBoss = true break end end
         
         if not hasBoss then
-            -- BOSS 目标位置 (0, -300)
             -- 使用 Core 保证 BOSS 不会卡在树里或水里
-            Monster.spawnBoss(0, -300)
+            Monster.spawnBoss(0, -3200)
         end
     end
 end
