@@ -8,6 +8,8 @@
     "level": 1,
     "type": "heal",
     "power": 30,
+    "effect": "heal",
+    "effectColor": [0.9, 1, 0.75],
     "menuUsable": true
   },
   "2": {
@@ -19,18 +21,23 @@
     "level": 2,
     "type": "damage",
     "power": 40,
-    "effect": "fire", 
+    "effect": "fireball",
+    "effectColor": [1, 0.5, 0],
     "menuUsable": false
   },
   "3": {
     "name": "隐身术",
     "iconSheet": "assets/icon.png",
     "iconIndex": 1076,
-    "description": "短时间内不会被怪物发现 (未实装)",
+    "description": "20秒内不被发现，但在战斗中无效",
     "mp": 20,
-    "level": 5,
+    "level": 3,
     "type": "buff",
-    "menuUsable": true
+    "buffId": "invisible",
+    "duration": 20,
+    "menuUsable": true,
+    "effect": "heal",
+    "effectColor": [0.8, 0.8, 1.0]
   },
   "4": {
     "name": "终极爆裂",
@@ -41,7 +48,22 @@
     "level": 10,
     "type": "damage",
     "power": 200,
-    "effect": "fire", 
+    "effect": "explosion",
+    "effectColor": [1, 0.5, 0],
     "menuUsable": false
+  },
+  "5": {
+    "name": "毒咒术",
+    "iconSheet": "assets/icon.png",
+    "iconIndex": 1048,
+    "description": "使敌人中毒，持续扣血",
+    "mp": 15,
+    "level": 15,
+    "type": "debuff",
+    "buffId": "poison",
+    "power": 5,
+    "menuUsable": false,
+    "effect": "potion",
+    "effectColor": [0.6, 0.0, 0.8]
   }
 }

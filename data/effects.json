@@ -1,0 +1,87 @@
+{
+  "fireball": {
+    "sheet": "assets/effects.png",
+    "width": 64,
+    "height": 64,
+    "startRow": 8,
+    "startCol": 0,
+    "frames": 6,
+    "duration": 0.4,
+    "sound": "assets/sounds/explosion.wav",
+    "volume": 0.8
+  },
+  "heal": {
+    "sheet": "assets/effects.png",
+    "width": 64,
+    "height": 64,
+    "startRow": 17,
+    "startCol": 0,
+    "frames": 8,
+    "duration": 0.6,
+    "sound": "assets/sounds/heal.wav"
+  },
+  "shining": {
+    "sheet": "assets/effects.png",
+    "width": 64,
+    "height": 64,
+    "startRow": 1,
+    "startCol": 0,
+    "frames": 6,
+    "duration": 0.5,
+    "sound": "assets/sounds/potion.wav",
+    "soundStart": 0.1,  
+    "soundDuration": 0.5 
+  },
+  "drop": {
+    "sheet": "assets/effects.png",
+    "width": 64,
+    "height": 64,
+    "startRow": 2,
+    "startCol": 0,
+    "frames": 6,
+    "duration": 0.5,
+    "sound": "assets/sounds/explosion.wav",
+    "soundStart": 0.1,  
+    "soundDuration": 0.5 
+  },
+  "explosion": {
+    "sheet": "assets/effects.png",
+    "width": 64,
+    "height": 64,
+    "startRow": 3,
+    "startCol": 0,
+    "frames": 6,
+    "duration": 0.5,
+    "sound": "assets/sounds/explosion.wav",
+    "soundStart": 0.1,  
+    "soundDuration": 0.5 
+  },
+    "sword": {
+    "sheet": "assets/effects_physical.png",
+    "width": 64,
+    "height": 64,
+    "startRow": 7,
+    "startCol": 5,
+    "frames": 5,
+    "duration": 0.5,
+    "sound": "assets/sounds/sword.wav",
+    "soundStart": 0.1,  
+    "soundDuration": 0.5 
+  },
+    "potion_use": {
+    "sheet": "assets/effects.png", 
+    "width": 64, "height": 64, 
+    "startRow": 28, "startCol": 0, 
+    "frames": 9, "duration": 0.5,
+    "sound": "assets/sounds/potion.mp3",
+    "volume": 1.0
+  },
+      "hit_physical": {
+    "sheet": "assets/effects_physical.png", 
+    "width": 64, "height": 64, 
+    "startRow": 11, "startCol": 5, 
+    "frames": 5, "duration": 0.5,
+    "sound": "assets/sounds/sword.wav",
+    "volume": 1.0
+  }
+}

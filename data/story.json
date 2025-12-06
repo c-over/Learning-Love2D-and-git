@@ -1,0 +1,21 @@
+{
+  "quest": {
+    "boss_title": "讨伐魔王",
+    "boss_desc_start": "前往北方 (0, -3200) 击败魔王，然后向商人回复。",
+    "boss_desc_finish": "魔王已被击败！快回去找商人领赏。",
+    "boss_desc_done": "你已经击败了魔王，不仅拯救了村庄，还发了财。"
+  },
+  "merchant": {
+    "name": "流浪商人",
+    "greet_normal": "欢迎光临！看看有什么需要的吗？",
+    "greet_quest_start": "最近北方的森林里出现了一个魔王(坐标: 0, -3200)，搞得人心惶惶。\n勇士，你能帮我去消灭它吗？",
+    "greet_quest_active": "魔王非常强大，请务必小心。它就在北边的森林深处 (0, -3200)。\n打败它后记得回来找我。",
+    "greet_quest_killed": "天哪！你真的做到了！\n这是传说中的【皇家徽章】，请收下它作为谢礼。",
+    "greet_quest_done": "感谢你，伟大的英雄！你永远是本店的贵宾。"
+  },
+  "system": {
+    "quest_accept": "已接受任务",
+    "quest_complete": "任务完成",
+    "item_get": "获得了"
+  }
+}
